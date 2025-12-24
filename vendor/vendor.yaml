@@ -27,18 +27,15 @@ vendors:
 
   # ============================================
   # FABRIC (Daniel Miessler)
-  # AI prompt patterns framework
-  # Can be standalone or via PAI (if PAI includes it)
+  # NOT NEEDED - PAI includes all 247 Fabric patterns
+  # PAI's patterns are at: .claude/Skills/Fabric/tools/patterns/
+  # Update PAI patterns with: vendor/pai/.claude/Skills/Fabric/tools/update-patterns.sh
   # ============================================
   fabric:
     repo: "https://github.com/danielmiessler/fabric.git"
     branch: "main"
-    description: "AI augmentation framework with prompt patterns"
-    enabled: false  # Set to true if NOT using PAI's Fabric
-    integrations:
-      - type: patterns
-        source: "patterns/"
-        description: "Crowdsourced AI prompt patterns"
+    description: "AI augmentation framework - DISABLED (included in PAI)"
+    enabled: false
 
 # Configuration
 config:
