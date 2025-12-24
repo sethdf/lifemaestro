@@ -1,0 +1,182 @@
+# LifeMaestro AI CLI Tools Registry
+# Each tool is a native CLI that LifeMaestro can invoke
+
+cli_tools:
+  # ============================================
+  # ANTHROPIC FAMILY
+  # ============================================
+  claude:
+    binary: "claude"
+    type: "consumer_cli"
+    vendor: "anthropic"
+    capabilities: [chat, code, tools, mcp, projects, files]
+    auth:
+      methods: [anthropic_api, bedrock, consumer_session]
+      env_vars: [ANTHROPIC_API_KEY, AWS_PROFILE]
+    commands:
+      chat: "claude"
+      ask: "claude --print"
+      code: "claude"
+
+  # ============================================
+  # OPENAI FAMILY
+  # ============================================
+  openai:
+    binary: "openai"
+    type: "api_cli"
+    vendor: "openai"
+    capabilities: [chat, completions, embeddings]
+    auth:
+      methods: [openai_api, azure_openai]
+      env_vars: [OPENAI_API_KEY, AZURE_OPENAI_API_KEY]
+
+  chatgpt:
+    binary: "chatgpt"
+    type: "consumer_cli"
+    vendor: "openai"
+    capabilities: [chat]
+    auth:
+      methods: [consumer_session]
+
+  # ============================================
+  # GOOGLE FAMILY
+  # ============================================
+  gemini:
+    binary: "gemini"
+    type: "api_cli"
+    vendor: "google"
+    capabilities: [chat, multimodal]
+    auth:
+      methods: [gemini_api]
+      env_vars: [GEMINI_API_KEY]
+
+  # ============================================
+  # LOCAL / SELF-HOSTED
+  # ============================================
+  ollama:
+    binary: "ollama"
+    type: "local"
+    vendor: "ollama"
+    capabilities: [chat, embeddings, models, serve]
+    auth:
+      methods: [none]
+    commands:
+      chat: "ollama run"
+      list: "ollama list"
+      pull: "ollama pull"
+      serve: "ollama serve"
+    models:
+      default: "llama3.2"
+      embed: "nomic-embed-text"
+
+  lmstudio:
+    binary: "lms"
+    type: "local"
+    vendor: "lmstudio"
+    capabilities: [chat, server]
+
+  llamacpp:
+    binary: "llama-cli"
+    type: "local"
+    vendor: "ggerganov"
+    capabilities: [chat, completions]
+
+  # ============================================
+  # CODING ASSISTANTS
+  # ============================================
+  aider:
+    binary: "aider"
+    type: "coding"
+    vendor: "paul-gauthier"
+    capabilities: [code, git, multi_file]
+    auth:
+      methods: [anthropic_api, openai_api, bedrock, ollama]
+    backends:
+      anthropic: "--sonnet"
+      openai: "--4o"
+      ollama: "--ollama"
+      bedrock: "--bedrock"
+
+  amazon-q:
+    binary: "q"
+    type: "coding"
+    vendor: "aws"
+    capabilities: [code, chat, transform]
+    auth:
+      methods: [aws_sso, aws_iam]
+
+  gh-copilot:
+    binary: "gh"
+    type: "coding"
+    vendor: "github"
+    capabilities: [code, explain, suggest]
+    auth:
+      methods: [github_oauth]
+    commands:
+      chat: "gh copilot chat"
+      explain: "gh copilot explain"
+      suggest: "gh copilot suggest"
+
+  cursor:
+    binary: "cursor"
+    type: "ide"
+    vendor: "cursor"
+    capabilities: [code, chat, composer]
+
+  # ============================================
+  # UTILITY / ORCHESTRATION
+  # ============================================
+  llm:
+    binary: "llm"
+    type: "utility"
+    vendor: "simonwillison"
+    capabilities: [chat, embeddings, plugins, templates]
+    auth:
+      methods: [various]
+    commands:
+      chat: "llm chat"
+      prompt: "llm"
+      models: "llm models"
+
+  fabric:
+    binary: "fabric"
+    type: "utility"
+    vendor: "danielmiessler"
+    capabilities: [patterns, youtube, extract]
+    auth:
+      methods: [various]
+
+  # ============================================
+  # OTHER PROVIDERS
+  # ============================================
+  mistral:
+    binary: "mistral"
+    type: "api_cli"
+    vendor: "mistral"
+    capabilities: [chat]
+    auth:
+      env_vars: [MISTRAL_API_KEY]
+
+  groq:
+    binary: "groq"
+    type: "api_cli"
+    vendor: "groq"
+    capabilities: [chat, fast_inference]
+    auth:
+      env_vars: [GROQ_API_KEY]
+
+  cohere:
+    binary: "cohere"
+    type: "api_cli"
+    vendor: "cohere"
+    capabilities: [chat, embeddings, rerank]
+    auth:
+      env_vars: [COHERE_API_KEY]
+
+  perplexity:
+    binary: "pplx"
+    type: "api_cli"
+    vendor: "perplexity"
+    capabilities: [search, chat]
+    auth:
+      env_vars: [PERPLEXITY_API_KEY]

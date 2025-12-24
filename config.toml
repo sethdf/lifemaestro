@@ -1,0 +1,223 @@
+# LifeMaestro Configuration
+# =========================
+# Copy to ~/.config/lifemaestro/config.toml and customize
+
+[maestro]
+version = "0.2.0"
+
+# ============================================
+# ADAPTERS
+# ============================================
+# Order determines preference (first available is used)
+
+[adapters]
+ai = ["claude", "ollama", "llm"]
+mail = ["himalaya", "imap"]
+calendar = ["khal", "gcalcli"]
+tasks = ["taskwarrior", "todoist"]
+secrets = ["sops", "pass", "env"]
+search = ["notmuch", "grep"]
+
+# ============================================
+# CONTEXTS (Work/Home/Custom)
+# ============================================
+
+[contexts.work]
+[contexts.work.git]
+user = "Your Name"
+email = "you@company.com"
+
+[contexts.work.github]
+ssh_host = "github.com-work"
+username = "your-work-username"
+
+[contexts.work.aws]
+profile = "work-sso"
+region = "us-east-1"
+
+[contexts.work.ai]
+provider = "claude"
+backend = "bedrock"  # or "anthropic"
+
+[contexts.work.mail]
+account = "work"
+
+[contexts.work.rules]
+safety = "strict"
+
+
+[contexts.home]
+[contexts.home.git]
+user = "Your Name"
+email = "you@personal.com"
+
+[contexts.home.github]
+ssh_host = "github.com-home"
+username = "your-personal-username"
+
+[contexts.home.aws]
+profile = "home-sso"
+region = "us-west-2"
+
+[contexts.home.ai]
+provider = "claude"
+backend = "anthropic"
+
+[contexts.home.mail]
+account = "gmail"
+
+[contexts.home.rules]
+safety = "relaxed"
+
+# ============================================
+# AI PROVIDERS
+# ============================================
+
+[ai]
+default_provider = "claude"
+default_code_provider = "claude"
+default_fast_provider = "ollama"
+
+[ai.claude]
+enabled = true
+# Auth: ANTHROPIC_API_KEY env var or AWS Bedrock
+
+[ai.openai]
+enabled = true
+default_model = "gpt-4o"
+# Auth: OPENAI_API_KEY env var
+
+[ai.ollama]
+enabled = true
+default_model = "llama3.2"
+embed_model = "nomic-embed-text"
+auto_start = true
+
+[ai.amazon-q]
+enabled = false
+# Auth: AWS SSO
+
+[ai.gh-copilot]
+enabled = false
+# Auth: gh auth login
+
+[ai.aider]
+enabled = true
+backend = "anthropic"  # or "openai", "ollama", "bedrock"
+
+[ai.llm]
+enabled = true
+# Simon Willison's llm tool
+
+[ai.gemini]
+enabled = false
+# Auth: GEMINI_API_KEY env var
+
+[ai.mistral]
+enabled = false
+# Auth: MISTRAL_API_KEY env var
+
+[ai.groq]
+enabled = false
+# Auth: GROQ_API_KEY env var
+
+# Consumer accounts (browser sessions)
+[ai.claude-web]
+enabled = false
+browser = "chrome"
+profile = "Default"
+
+[ai.chatgpt]
+enabled = false
+browser = "chrome"
+profile = "Default"
+
+# ============================================
+# MAIL ACCOUNTS
+# ============================================
+
+[mail.accounts.work]
+type = "ms365"
+email = "you@company.com"
+# OAuth config in secrets
+
+[mail.accounts.gmail]
+type = "gmail"
+email = "you@gmail.com"
+# OAuth config in secrets
+
+# ============================================
+# KEEPALIVE
+# ============================================
+
+[keepalive]
+enabled = true
+interval = 300  # seconds
+
+[keepalive.thresholds]
+aws_sso = 3600      # refresh when < 1 hour left
+oauth = 600         # refresh when < 10 min left
+azure_ad = 3000     # refresh when < 50 min left
+
+[keepalive.notifications]
+enabled = true
+critical_only = false
+
+[keepalive.autostart]
+enabled = true
+method = "background"  # or "systemd", "launchd"
+
+[keepalive.monitor]
+api = ["bedrock", "azure-openai"]
+consumer = []
+local = ["ollama"]
+
+# ============================================
+# SESSIONS
+# ============================================
+
+[sessions]
+base_dir = "~/ai-sessions"  # Where session repos live
+default_context = "home"
+
+[sessions.repos.work]
+tickets = "your-org/work-tickets"
+explorations = "your-org/work-explorations"
+
+[sessions.repos.home]
+explorations = "your-username/explorations"
+learning = "your-username/learning"
+
+# ============================================
+# SKILLS
+# ============================================
+
+[skills]
+# Additional skill directories to load
+extra_dirs = []
+
+# Default providers for skill AI levels
+[skills.providers]
+light = "ollama"    # Fast, cheap for simple tasks
+medium = "claude"   # Better for drafting, summarizing
+full = "claude"     # Interactive sessions
+
+# ============================================
+# CREDENTIALS
+# ============================================
+
+[credentials]
+default_source = "secrets"
+
+[credentials.sources]
+oauth_clients = "secrets"     # In-repo (encrypted)
+api_keys = "env"              # Environment variables
+aws = "aws-sso"               # AWS SSO flow
+
+# Environment variable mappings
+[credentials.env]
+anthropic = "ANTHROPIC_API_KEY"
+openai = "OPENAI_API_KEY"
+gemini = "GEMINI_API_KEY"
+mistral = "MISTRAL_API_KEY"
+groq = "GROQ_API_KEY"

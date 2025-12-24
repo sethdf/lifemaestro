@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# session - AI session management
+# 12-Factor CLI compliant
+
+set -euo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+
+source "$MAESTRO_ROOT/core/init.sh"
+maestro::init 2>/dev/null || true
+
+# Parse common flags
+cli::parse_common_flags "$@"
+set -- "${MAESTRO_ARGS[@]}"
+
+cmd="${1:-status}"
+shift || true
+
+case "$cmd" in
+    # ============================================
+    # CREATE SESSIONS
+    # ============================================
+    new|create)
+        type="${1:-exploration}"
+        name="${2:-}"
+        if [[ -z "$name" ]]; then
+            if cli::has_stdin; then
+                name=$(cat)
+            elif cli::is_tty; then
+                read -p "Session name: " name
+            else
+                cli::die_usage "Usage: session new <type> <name>"
+            fi
+        fi
+        session::create "$type" "$name"
+        ;;
+    ticket|t)
+        if [[ $# -lt 2 ]]; then
+            cli::die_usage "Usage: session ticket <number> <description>"
+        fi
+        session::ticket "$@"
+        ;;
+    work|w)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: session work <name>"
+        fi
+        session::work "$@"
+        ;;
+    home|h)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: session home <name>"
+        fi
+        session::home "$@"
+        ;;
+    infra|i)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: session infra <name>"
+        fi
+        session::infra "$@"
+        ;;
+    learn|l)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: session learn <topic>"
+        fi
+        session::learn "$@"
+        ;;
+
+    # ============================================
+    # NAVIGATION
+    # ============================================
+    list|ls)
+        session::list "$@"
+        ;;
+    go|g)
+        session::go "$@"
+        ;;
+
+    # ============================================
+    # CONTEXT
+    # ============================================
+    switch|sw)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: session switch <work|home>"
+        fi
+        session::switch "$@"
+        ;;
+    context|ctx)
+        session::show_context
+        ;;
+
+    # ============================================
+    # UTILITIES
+    # ============================================
+    compact)
+        session::compact
+        ;;
+    done|complete)
+        session::done
+        ;;
+    status|s)
+        session::show_context
+        cli::out ""
+        cli::out "Current directory: $PWD"
+        if [[ -f "CLAUDE.md" ]]; then
+            cli::out "Session file: CLAUDE.md"
+        fi
+        ;;
+
+    # ============================================
+    # HELP
+    # ============================================
+    version|-v|--version)
+        cli::out "session (lifemaestro) $MAESTRO_VERSION"
+        exit $EXIT_SUCCESS
+        ;;
+    help|--help|-h)
+        cli::out "session - AI Session Management"
+        cli::out ""
+        cli::out "Usage: session [options] <command> [args...]"
+        cli::out ""
+        cli::out "Options:"
+        cli::out "    -q, --quiet     Suppress non-essential output"
+        cli::out "    -v, --version   Show version"
+        cli::out "    -h, --help      Show this help"
+        cli::out ""
+        cli::out "Create sessions:"
+        cli::out "    new <type> <name>    Create new session"
+        cli::out "    ticket <num> <desc>  Create work ticket session"
+        cli::out "    work <name>          Create work exploration"
+        cli::out "    home <name>          Create home exploration"
+        cli::out "    infra <name>         Create infrastructure session"
+        cli::out "    learn <topic>        Create learning session"
+        cli::out ""
+        cli::out "Navigation:"
+        cli::out "    list [context]       List sessions"
+        cli::out "    go [context]         Jump to session (fzf)"
+        cli::out ""
+        cli::out "Context:"
+        cli::out "    switch <ctx>         Switch to work/home context"
+        cli::out "    context              Show current context"
+        cli::out ""
+        cli::out "Utilities:"
+        cli::out "    compact              Archive CLAUDE.md"
+        cli::out "    done                 Mark session complete"
+        cli::out "    status               Show current status"
+        cli::out ""
+        cli::out "Aliases (claude-sessions compatible):"
+        cli::out "    cc, ccticket, ccw, cch, ccinfra, cclearn, ccls, ccgo"
+        exit $EXIT_SUCCESS
+        ;;
+    *)
+        cli::die_usage "Unknown command: $cmd"
+        ;;
+esac

@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# ai - Unified AI interface
+# 12-Factor CLI compliant
+
+set -euo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+
+source "$MAESTRO_ROOT/core/init.sh"
+maestro::init 2>/dev/null || true
+
+# Parse common flags
+cli::parse_common_flags "$@"
+set -- "${MAESTRO_ARGS[@]}"
+
+cmd="${1:-chat}"
+shift || true
+
+case "$cmd" in
+    # ============================================
+    # MAIN COMMANDS
+    # ============================================
+    chat|c)
+        session::ai "${@}"
+        ;;
+    ask|a)
+        if [[ $# -eq 0 ]]; then
+            # Check for stdin
+            if cli::has_stdin; then
+                input=$(cat)
+                skill::ai_oneshot "$input"
+            else
+                cli::die_usage "Usage: ai ask <question>"
+            fi
+        else
+            skill::ai_oneshot "$*"
+        fi
+        ;;
+    code)
+        provider=$(maestro::config 'ai.default_code_provider' 'claude')
+        session::ai "$provider" "$@"
+        ;;
+
+    # ============================================
+    # PROVIDER MANAGEMENT
+    # ============================================
+    list|ls)
+        cli::out "AI Providers:"
+        cli::out ""
+        cli::out "  CLI Tools:"
+        for tool in claude openai ollama gemini aider llm q gh-copilot fabric mistral; do
+            binary="$tool"
+            [[ "$tool" == "q" ]] && binary="q"
+            [[ "$tool" == "gh-copilot" ]] && binary="gh"
+
+            if command -v "$binary" &>/dev/null; then
+                cli::out "    ✅ $tool"
+            else
+                cli::out "    ⚪ $tool (not installed)"
+            fi
+        done
+        ;;
+    use)
+        if [[ $# -eq 0 ]]; then
+            cli::die_usage "Usage: ai use <provider>"
+        fi
+        provider="$1"
+        cli::atomic_write "$MAESTRO_ROOT/config.local.toml" "ai.default_provider = \"$provider\""
+        cli::success "Default provider set to: $provider"
+        ;;
+    which)
+        cli::out "Default provider: $(maestro::config 'ai.default_provider' 'claude')"
+        cli::out "Code provider: $(maestro::config 'ai.default_code_provider' 'claude')"
+        cli::out "Fast provider: $(maestro::config 'ai.default_fast_provider' 'ollama')"
+        ;;
+
+    # ============================================
+    # DIRECT PASSTHROUGH
+    # ============================================
+    claude)
+        exec claude "$@"
+        ;;
+    ollama)
+        exec ollama "$@"
+        ;;
+    aider)
+        exec aider "$@"
+        ;;
+    llm)
+        exec llm "$@"
+        ;;
+    q)
+        exec q "$@"
+        ;;
+    copilot)
+        exec gh copilot "$@"
+        ;;
+    fabric)
+        exec fabric "$@"
+        ;;
+
+    # ============================================
+    # HELP
+    # ============================================
+    version|-v|--version)
+        cli::out "ai (lifemaestro) $MAESTRO_VERSION"
+        exit $EXIT_SUCCESS
+        ;;
+    help|--help|-h)
+        cli::out "ai - Unified AI Interface"
+        cli::out ""
+        cli::out "Usage: ai [options] <command> [args...]"
+        cli::out ""
+        cli::out "Options:"
+        cli::out "    -q, --quiet     Suppress non-essential output"
+        cli::out "    -v, --version   Show version"
+        cli::out "    -h, --help      Show this help"
+        cli::out ""
+        cli::out "Commands:"
+        cli::out "    chat [provider]     Start interactive chat (default)"
+        cli::out "    ask <question>      Ask a single question"
+        cli::out "    code               Start coding assistant"
+        cli::out ""
+        cli::out "    list               List available providers"
+        cli::out "    use <provider>     Set default provider"
+        cli::out "    which              Show current defaults"
+        cli::out ""
+        cli::out "Direct passthrough:"
+        cli::out "    claude, ollama, aider, llm, q, copilot, fabric"
+        cli::out ""
+        cli::out "Piping:"
+        cli::out "    echo 'question' | ai ask    # Read from stdin"
+        cli::out ""
+        cli::out "Examples:"
+        cli::out "    ai                      # Chat with default provider"
+        cli::out "    ai chat ollama          # Chat with Ollama"
+        cli::out "    ai ask \"What is 2+2?\"   # Quick question"
+        cli::out "    ai ollama run llama3.2  # Direct Ollama command"
+        exit $EXIT_SUCCESS
+        ;;
+    *)
+        # Default: treat as question if not a command
+        skill::ai_oneshot "$cmd $*"
+        ;;
+esac

@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# maestro - Main entry point for LifeMaestro
+# 12-Factor CLI compliant
+
+set -euo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+
+# Source core (includes cli.sh)
+source "$MAESTRO_ROOT/core/init.sh"
+
+# Parse common flags first
+cli::parse_common_flags "$@"
+set -- "${MAESTRO_ARGS[@]}"
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+    status|s)
+        maestro::status
+        ;;
+    init)
+        maestro::init
+        cli::success "LifeMaestro initialized"
+        ;;
+    config)
+        ${EDITOR:-vim} "$MAESTRO_CONFIG"
+        ;;
+    log|logs)
+        tail -f "$MAESTRO_STATE/maestro.log"
+        ;;
+    version|-v|--version)
+        cli::out "maestro $MAESTRO_VERSION"
+        exit $EXIT_SUCCESS
+        ;;
+    help|--help|-h)
+        # Help goes to stdout, exit 0
+        cli::out "LifeMaestro - Personal AI Operating System"
+        cli::out ""
+        cli::out "Usage: maestro [options] <command>"
+        cli::out ""
+        cli::out "Options:"
+        cli::out "    -q, --quiet     Suppress non-essential output"
+        cli::out "    -v, --version   Show version"
+        cli::out "    -h, --help      Show this help"
+        cli::out "    --debug         Enable debug output"
+        cli::out "    --no-color      Disable colors"
+        cli::out ""
+        cli::out "Commands:"
+        cli::out "    status      Show system status"
+        cli::out "    init        Initialize/reload LifeMaestro"
+        cli::out "    config      Edit configuration"
+        cli::out "    logs        View logs"
+        cli::out ""
+        cli::out "Related commands:"
+        cli::out "    ai          AI assistant commands"
+        cli::out "    creds       Credential management"
+        cli::out "    session     Session management"
+        cli::out "    skill       Run skills"
+        cli::out ""
+        cli::out "Environment variables:"
+        cli::out "    MAESTRO_ROOT      Config directory (default: ~/.config/lifemaestro)"
+        cli::out "    MAESTRO_DEBUG     Enable debug output"
+        cli::out "    MAESTRO_QUIET     Suppress output"
+        cli::out "    NO_COLOR          Disable colors"
+        exit $EXIT_SUCCESS
+        ;;
+    *)
+        cli::die_usage "Unknown command: $cmd"
+        ;;
+esac

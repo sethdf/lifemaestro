@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# creds - Credential management
+# 12-Factor CLI compliant
+
+set -euo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+
+source "$MAESTRO_ROOT/core/init.sh"
+maestro::init 2>/dev/null || true
+
+# Parse common flags
+cli::parse_common_flags "$@"
+set -- "${MAESTRO_ARGS[@]}"
+
+cmd="${1:-status}"
+shift || true
+
+case "$cmd" in
+    status|s)
+        keepalive::status
+        ;;
+    check|c)
+        if keepalive::check_all; then
+            exit $EXIT_SUCCESS
+        else
+            exit $EXIT_ERROR
+        fi
+        ;;
+    start)
+        keepalive::start
+        ;;
+    stop)
+        keepalive::stop
+        ;;
+    restart)
+        keepalive::stop
+        sleep 1
+        keepalive::start
+        ;;
+    refresh|r)
+        cli::info "Forcing credential refresh..."
+        AWS_REFRESH_THRESHOLD=999999 OAUTH_REFRESH_THRESHOLD=999999 keepalive::check_all
+        ;;
+    log|logs)
+        if [[ ! -f "$MAESTRO_STATE/keepalive.log" ]]; then
+            cli::die $EXIT_NOINPUT "No keepalive log found"
+        fi
+        tail -f "$MAESTRO_STATE/keepalive.log"
+        ;;
+    watch)
+        while true; do
+            clear
+            keepalive::status
+            cli::log ""
+            cli::log "Refreshing every 30s... (Ctrl+C to exit)"
+            sleep 30
+        done
+        ;;
+    version|-v|--version)
+        cli::out "creds (lifemaestro) $MAESTRO_VERSION"
+        exit $EXIT_SUCCESS
+        ;;
+    help|--help|-h)
+        cli::out "creds - Credential Management"
+        cli::out ""
+        cli::out "Usage: creds [options] <command>"
+        cli::out ""
+        cli::out "Options:"
+        cli::out "    -q, --quiet     Suppress non-essential output"
+        cli::out "    -v, --version   Show version"
+        cli::out "    -h, --help      Show this help"
+        cli::out ""
+        cli::out "Commands:"
+        cli::out "    status      Show credential status (default)"
+        cli::out "    check       Run one check cycle (exit 0=ok, 1=error)"
+        cli::out "    start       Start keepalive daemon"
+        cli::out "    stop        Stop keepalive daemon"
+        cli::out "    restart     Restart daemon"
+        cli::out "    refresh     Force refresh all credentials"
+        cli::out "    logs        View keepalive logs"
+        cli::out "    watch       Live status display"
+        cli::out ""
+        cli::out "Exit codes:"
+        cli::out "    0   Success / all credentials valid"
+        cli::out "    1   One or more credentials invalid"
+        cli::out "    2   Configuration error"
+        exit $EXIT_SUCCESS
+        ;;
+    *)
+        cli::die_usage "Unknown command: $cmd"
+        ;;
+esac

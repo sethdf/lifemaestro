@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# skill - Run LifeMaestro skills
+# 12-Factor CLI compliant
+
+set -euo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+
+source "$MAESTRO_ROOT/core/init.sh"
+maestro::init 2>/dev/null || true
+
+# Parse common flags
+cli::parse_common_flags "$@"
+set -- "${MAESTRO_ARGS[@]}"
+
+cmd="${1:-list}"
+shift || true
+
+case "$cmd" in
+    list|ls)
+        skill::list
+        ;;
+    run|r)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: skill run <skill-name> [args...]"
+        fi
+        skill_name="$1"
+        shift
+        skill::run "$skill_name" "$@"
+        ;;
+    info|i)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: skill info <skill-name>"
+        fi
+        skill_name="$1"
+        ai_level=$(skill::ai_level "$skill_name")
+        cli::out "Skill: $skill_name"
+        cli::out "AI Level: $ai_level"
+        ;;
+    version|-v|--version)
+        cli::out "skill (lifemaestro) $MAESTRO_VERSION"
+        exit $EXIT_SUCCESS
+        ;;
+    help|--help|-h)
+        cli::out "skill - LifeMaestro Skills"
+        cli::out ""
+        cli::out "Usage: skill [options] <command> [args...]"
+        cli::out ""
+        cli::out "Options:"
+        cli::out "    -q, --quiet     Suppress non-essential output"
+        cli::out "    -v, --version   Show version"
+        cli::out "    -h, --help      Show this help"
+        cli::out ""
+        cli::out "Commands:"
+        cli::out "    list             List available skills"
+        cli::out "    run <name>       Run a skill"
+        cli::out "    info <name>      Show skill info"
+        cli::out ""
+        cli::out "AI Levels:"
+        cli::out "    ○ none    - Pure bash, zero AI tokens"
+        cli::out "    ◐ light   - Single-shot AI (categorize, extract)"
+        cli::out "    ◑ medium  - Multi-step AI (draft, summarize)"
+        cli::out "    ● full    - Interactive AI session"
+        cli::out ""
+        cli::out "Built-in Skills:"
+        cli::out "    creds, session-new, session-list, context-switch"
+        cli::out "    categorize, extract-action, sentiment"
+        cli::out "    summarize, draft-reply, explain"
+        cli::out "    code, chat"
+        cli::out ""
+        cli::out "Examples:"
+        cli::out "    skill list"
+        cli::out "    skill run categorize \"Important meeting tomorrow\""
+        cli::out "    echo \"Hello world\" | skill run summarize"
+        exit $EXIT_SUCCESS
+        ;;
+    *)
+        # If first arg looks like a skill name, run it directly
+        skill::run "$cmd" "$@"
+        ;;
+esac

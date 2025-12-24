@@ -1,0 +1,24 @@
+# Secrets (handled by sops, but just in case)
+secrets/*.yaml
+secrets/*.yml
+secrets/*.json
+!secrets/.gitattributes
+!secrets/.gitkeep
+
+# Local config overrides
+config.local.toml
+
+# State files
+*.log
+*.pid
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
