@@ -66,6 +66,17 @@ else
     echo "LifeMaestro already in $RC_FILE"
 fi
 
+# Sync vendor dependencies (if configured)
+echo ""
+echo "Checking vendor dependencies..."
+if [[ -f "$INSTALL_DIR/vendor/sync.sh" ]]; then
+    if "$INSTALL_DIR/vendor/sync.sh" sync 2>/dev/null; then
+        echo "Vendor dependencies synced"
+    else
+        echo "Note: Configure vendor repos in vendor/vendor.yaml"
+    fi
+fi
+
 echo ""
 echo "Installation complete!"
 echo ""
@@ -75,8 +86,15 @@ echo "  2. Edit config: maestro config"
 echo "  3. Check status: maestro status"
 echo "  4. List skills: skill list"
 echo ""
+echo "Optional: Configure PAI (Personal AI Infrastructure)"
+echo "  1. Edit vendor/vendor.yaml"
+echo "  2. Set your PAI repo URL under 'pai: repo:'"
+echo "  3. Run: vendor sync pai"
+echo "  4. Update anytime: vendor update pai"
+echo ""
 echo "Optional: Install AI tools"
 echo "  - Claude:  npm install -g @anthropic-ai/claude-code"
 echo "  - Ollama:  curl -fsSL https://ollama.ai/install.sh | sh"
 echo "  - Aider:   pip install aider-chat"
 echo "  - llm:     pip install llm"
+echo "  - Fabric:  go install github.com/danielmiessler/fabric@latest"

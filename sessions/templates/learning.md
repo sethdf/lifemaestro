@@ -1,7 +1,12 @@
-# Learning: {{SESSION_NAME}}
+# {{NAME}}
 
-**Context:** {{CONTEXT}}
 **Date:** {{DATE}}
+**Zone:** {{CC_CONTEXT}}
+**Engineer:** {{CC_ENGINEER}}
+
+## Objective
+
+{{OBJECTIVE}}
 
 ## Topic
 
@@ -22,3 +27,5 @@
 ## Questions
 
 -
+
+{{RULES}}

@@ -19,55 +19,103 @@ secrets = ["sops", "pass", "env"]
 search = ["notmuch", "grep"]
 
 # ============================================
-# CONTEXTS (Work/Home/Custom)
+# ZONES (Flexible namespaces for any context)
 # ============================================
+# Zones replace hardcoded work/home. Define any zones you need.
+# Each zone can enable/disable features independently.
 
-[contexts.work]
-[contexts.work.git]
-user = "Your Name"
-email = "you@company.com"
+[zones.default]
+# The default zone when none is detected
+name = "personal"
 
-[contexts.work.github]
-ssh_host = "github.com-work"
-username = "your-work-username"
+[zones.personal]
+name = "personal"
+description = "Personal projects and learning"
 
-[contexts.work.aws]
-profile = "work-sso"
-region = "us-east-1"
-
-[contexts.work.ai]
-provider = "claude"
-backend = "bedrock"  # or "anthropic"
-
-[contexts.work.mail]
-account = "work"
-
-[contexts.work.rules]
-safety = "strict"
-
-
-[contexts.home]
-[contexts.home.git]
+[zones.personal.git]
 user = "Your Name"
 email = "you@personal.com"
 
-[contexts.home.github]
+[zones.personal.github]
 ssh_host = "github.com-home"
 username = "your-personal-username"
 
-[contexts.home.aws]
+[zones.personal.aws]
 profile = "home-sso"
 region = "us-west-2"
 
-[contexts.home.ai]
+[zones.personal.ai]
 provider = "claude"
 backend = "anthropic"
 
-[contexts.home.mail]
+[zones.personal.mail]
 account = "gmail"
 
-[contexts.home.rules]
+[zones.personal.rules]
 safety = "relaxed"
+
+# Optional features - all disabled for personal
+[zones.personal.features]
+tickets = false
+sdp = false
+jira = false
+linear = false
+
+# Example work zone - copy and customize for your employer
+[zones.acme-corp]
+name = "acme-corp"
+description = "Acme Corporation work projects"
+
+[zones.acme-corp.git]
+user = "Your Name"
+email = "you@acme-corp.com"
+
+[zones.acme-corp.github]
+ssh_host = "github.com-work"
+username = "your-work-username"
+
+[zones.acme-corp.aws]
+profile = "work-sso"
+region = "us-east-1"
+
+[zones.acme-corp.ai]
+provider = "claude"
+backend = "bedrock"
+
+[zones.acme-corp.mail]
+account = "work"
+
+[zones.acme-corp.rules]
+safety = "strict"
+
+# Optional features enabled for work
+[zones.acme-corp.features]
+tickets = true
+sdp = true           # ServiceDesk Plus integration
+jira = false         # Set true if using Jira
+linear = false       # Set true if using Linear
+github_issues = true
+
+# ServiceDesk Plus config (only used if sdp = true)
+[zones.acme-corp.sdp]
+base_url = "https://sdp.acme-corp.com/api/v3"
+# API key should be in env: SDP_API_KEY or secrets
+
+# Jira config (only used if jira = true)
+[zones.acme-corp.jira]
+base_url = "https://acme-corp.atlassian.net"
+project_key = "ACME"
+
+# Linear config (only used if linear = true)
+[zones.acme-corp.linear]
+team_id = ""
+
+# Zone detection patterns (regex matched against pwd)
+[zones.detection]
+patterns = [
+    { pattern = "~/work|~/projects/acme", zone = "acme-corp" },
+    { pattern = "~/personal|~/projects/home", zone = "personal" },
+]
 
 # ============================================
 # AI PROVIDERS
@@ -178,15 +226,16 @@ local = ["ollama"]
 
 [sessions]
 base_dir = "~/ai-sessions"  # Where session repos live
-default_context = "home"
+default_zone = "personal"
 
-[sessions.repos.work]
-tickets = "your-org/work-tickets"
-explorations = "your-org/work-explorations"
-
-[sessions.repos.home]
+# Repos are now per-zone
+[sessions.repos.personal]
 explorations = "your-username/explorations"
 learning = "your-username/learning"
+
+[sessions.repos.acme-corp]
+tickets = "your-org/work-tickets"
+explorations = "your-org/work-explorations"
 
 # ============================================
 # SKILLS

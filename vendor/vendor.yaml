@@ -1,0 +1,52 @@
+# LifeMaestro External Dependencies
+# These repos are managed via `maestro vendor sync`
+# They are cloned to vendor/<name>/ and can be updated anytime
+
+vendors:
+  # ============================================
+  # PERSONAL AI INFRASTRUCTURE (PAI)
+  # Your personal AI setup - includes Fabric integration
+  # Update the repo URL to match your PAI fork/repo
+  # ============================================
+  pai:
+    repo: "https://github.com/YOURUSER/pai.git"
+    branch: "main"
+    description: "Personal AI Infrastructure - includes Fabric patterns"
+    enabled: true
+    # What to integrate from PAI
+    integrations:
+      - type: patterns
+        source: "patterns/"
+        description: "AI prompt patterns (Fabric-style)"
+      - type: scripts
+        source: "bin/"
+        description: "CLI utilities"
+      - type: configs
+        source: "config/"
+        description: "Configuration templates"
+
+  # ============================================
+  # FABRIC (Daniel Miessler)
+  # AI prompt patterns framework
+  # Can be standalone or via PAI (if PAI includes it)
+  # ============================================
+  fabric:
+    repo: "https://github.com/danielmiessler/fabric.git"
+    branch: "main"
+    description: "AI augmentation framework with prompt patterns"
+    enabled: false  # Set to true if NOT using PAI's Fabric
+    integrations:
+      - type: patterns
+        source: "patterns/"
+        description: "Crowdsourced AI prompt patterns"
+
+# Configuration
+config:
+  # Where to clone repos (relative to MAESTRO_ROOT)
+  vendor_dir: "vendor"
+
+  # Auto-update on install
+  auto_sync: true
+
+  # Shallow clone to save space
+  shallow: true

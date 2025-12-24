@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# vendor - Manage external dependencies (PAI, Fabric, etc.)
+# CLI wrapper for vendor/sync.sh
+# 12-Factor CLI compliant
+
+set -euo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+
+exec "$MAESTRO_ROOT/vendor/sync.sh" "$@"

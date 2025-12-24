@@ -464,19 +464,23 @@ _skill_session_list() {
 }
 skill::register "session-list" "_skill_session_list" "none" "List sessions"
 
-# --- CONTEXT SKILLS (No AI) ---
+# --- ZONE SKILLS (No AI) ---
 
-_skill_context_switch() {
-    local ctx="${1:-}"
-    [[ -z "$ctx" ]] && cli::die_usage "Usage: skill context-switch <work|home>"
-    session::switch "$ctx"
+_skill_zone_switch() {
+    local zone="${1:-}"
+    [[ -z "$zone" ]] && cli::die_usage "Usage: skill zone-switch <zone-name>"
+    session::switch "$zone"
 }
-skill::register "context-switch" "_skill_context_switch" "none" "Switch context"
+skill::register "zone-switch" "_skill_zone_switch" "none" "Switch zone"
 
-_skill_context_show() {
-    session::show_context
+_skill_zone_show() {
+    session::show_zone
 }
-skill::register "context" "_skill_context_show" "none" "Show current context"
+skill::register "zone" "_skill_zone_show" "none" "Show current zone"
+
+# Legacy aliases
+skill::register "context-switch" "_skill_zone_switch" "none" "Switch zone (legacy)"
+skill::register "context" "_skill_zone_show" "none" "Show current zone (legacy)"
 
 # --- QUICK AI SKILLS (Light AI) ---
 
@@ -545,8 +549,8 @@ _skill_draft_reply() {
 
     [[ -z "$input" ]] && cli::die_usage "Usage: skill draft-reply <email text>"
 
-    local ctx=$(session::current_context)
-    local name=$(maestro::config "contexts.$ctx.git.user" "User")
+    local zone=$(session::current_zone)
+    local name=$(maestro::config "zones.$zone.git.user" "User")
 
     skill::ai_converse \
         "You are drafting a professional email reply. Be concise and helpful. Sign as '$name'." \

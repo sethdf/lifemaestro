@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# zone - Manage LifeMaestro zones
+# CLI wrapper for Claude Code skill tools
+# 12-Factor CLI compliant
+
+set -euo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+TOOLS_DIR="$MAESTRO_ROOT/.claude/skills/zone-context/tools"
+
+source "$MAESTRO_ROOT/core/init.sh" 2>/dev/null || true
+maestro::init 2>/dev/null || true
+
+# Parse common flags
+cli::parse_common_flags "$@" 2>/dev/null || true
+set -- "${MAESTRO_ARGS[@]:-$@}"
+
+cmd="${1:-current}"
+shift || true
+
+case "$cmd" in
+    current|c)
+        "$TOOLS_DIR/zone-detect.sh"
+        ;;
+    list|ls|l)
+        "$TOOLS_DIR/zone-list.sh"
+        ;;
+    switch|s)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: zone switch <zone-name>"
+        fi
+        zone_name="$1"
+        # Output commands to eval
+        "$TOOLS_DIR/zone-switch.sh" "$zone_name"
+        echo ""
+        echo "# To apply: eval \"\$(zone switch $zone_name)\""
+        ;;
+    apply|a)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: zone apply <zone-name>"
+        fi
+        zone_name="$1"
+        # Actually apply the switch (for sourced usage)
+        eval "$("$TOOLS_DIR/zone-switch.sh" "$zone_name")"
+        echo "Switched to zone: $zone_name"
+        ;;
+    version|-v|--version)
+        echo "zone (lifemaestro) ${MAESTRO_VERSION:-0.2.0}"
+        exit 0
+        ;;
+    help|--help|-h)
+        cat <<EOF
+zone - Manage LifeMaestro zones
+
+Usage: zone <command> [args]
+
+Commands:
+    current             Show current zone (default)
+    list                List all configured zones
+    switch <name>       Output commands to switch zone (eval to apply)
+    apply <name>        Switch zone in current shell
+
+Options:
+    -q, --quiet         Suppress non-essential output
+    -v, --version       Show version
+    -h, --help          Show this help
+
+Examples:
+    zone                    # Show current zone
+    zone list               # List all zones
+    zone switch personal    # Show switch commands
+    eval "\$(zone switch personal)"  # Actually switch
+
+    # Or use apply for direct switching:
+    source zone apply personal
+
+Zones:
+    Zones are configured in ~/.config/lifemaestro/config.toml
+    Each zone defines: git identity, AWS profile, GitHub account, features
+
+Environment:
+    MAESTRO_ZONE        Override current zone detection
+EOF
+        exit 0
+        ;;
+    *)
+        # If argument looks like a zone name, treat as switch
+        if [[ -n "$cmd" ]]; then
+            "$TOOLS_DIR/zone-switch.sh" "$cmd"
+            echo ""
+            echo "# To apply: eval \"\$(zone switch $cmd)\""
+        else
+            "$TOOLS_DIR/zone-detect.sh"
+        fi
+        ;;
+esac

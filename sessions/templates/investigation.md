@@ -8,11 +8,27 @@
 
 {{OBJECTIVE}}
 
-## Notes
+## Background
+
+[What prompted this investigation?]
+
+## Hypothesis
 
 -
 
+## Investigation Steps
+
+1.
+
 ## Findings
+
+-
+
+## Conclusions
+
+-
+
+## Recommendations
 
 -
 

@@ -1,24 +1,36 @@
-# Ticket: {{SESSION_NAME}}
+# {{NAME}}
 
-**Context:** {{CONTEXT}}
 **Date:** {{DATE}}
+**Zone:** {{CC_CONTEXT}}
+**Engineer:** {{CC_ENGINEER}}
 
-## Problem
+## Ticket Reference
 
-[Describe the issue]
+**Ticket:** {{TICKET_NUM}}
 
-## Requirements
+{{TICKET_DETAILS}}
+
+## Objective
+
+{{OBJECTIVE}}
+
+## Investigation
 
 -
 
-## Implementation
+## Solution
 
 -
 
 ## Testing
 
--
+- [ ] Root cause identified
+- [ ] Fix implemented
+- [ ] Fix tested
+- [ ] Ticket updated with resolution
 
 ## Notes
 
 -
+
+{{RULES}}

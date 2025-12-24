@@ -8,6 +8,13 @@ secrets/*.json
 # Local config overrides
 config.local.toml
 
+# Vendor repos (cloned from GitHub, not committed)
+vendor/pai/
+vendor/fabric/
+# Keep vendor config and scripts
+!vendor/vendor.yaml
+!vendor/sync.sh
+
 # State files
 *.log
 *.pid

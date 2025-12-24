@@ -5,74 +5,87 @@
 SESSIONS_BASE="${SESSIONS_BASE:-$(maestro::config 'sessions.base_dir' "$HOME/ai-sessions")}"
 SESSIONS_BASE="${SESSIONS_BASE/#\~/$HOME}"
 
-# Current context (work/home)
-CURRENT_CONTEXT=""
+# Current zone
+CURRENT_ZONE=""
 
 # ============================================
-# CONTEXT MANAGEMENT
+# ZONE MANAGEMENT
 # ============================================
 
-session::current_context() {
-    # Detect from current directory or use default
-    if [[ -n "$CURRENT_CONTEXT" ]]; then
-        echo "$CURRENT_CONTEXT"
+session::current_zone() {
+    # Check explicit environment variable first
+    if [[ -n "${MAESTRO_ZONE:-}" ]]; then
+        echo "$MAESTRO_ZONE"
         return
     fi
 
-    local pwd="$PWD"
-    if [[ "$pwd" == *"/work/"* ]] || [[ "$pwd" == *"/work-"* ]]; then
-        echo "work"
-    elif [[ "$pwd" == *"/home/"* ]] || [[ "$pwd" == *"/personal/"* ]]; then
-        echo "home"
-    else
-        echo "$(maestro::config 'sessions.default_context' 'home')"
+    # Check cached value
+    if [[ -n "$CURRENT_ZONE" ]]; then
+        echo "$CURRENT_ZONE"
+        return
     fi
+
+    # Try to detect from directory patterns in config
+    local pwd="$PWD"
+    # Fall back to default zone
+    echo "$(maestro::config 'sessions.default_zone' 'personal')"
+}
+
+# Alias for backwards compatibility
+session::current_context() {
+    session::current_zone
 }
 
 session::switch() {
-    local context="$1"
+    local zone="$1"
 
-    # Validate context exists
-    local ctx_user=$(maestro::config "contexts.$context.git.user")
-    if [[ -z "$ctx_user" ]]; then
-        utils::error "Unknown context: $context"
+    # Validate zone exists
+    local zone_user=$(maestro::config "zones.$zone.git.user")
+    if [[ -z "$zone_user" ]]; then
+        utils::error "Unknown zone: $zone"
         return 1
     fi
 
-    CURRENT_CONTEXT="$context"
+    CURRENT_ZONE="$zone"
+    export MAESTRO_ZONE="$zone"
 
     # Set Git identity
-    export GIT_AUTHOR_NAME="$(maestro::config "contexts.$context.git.user")"
-    export GIT_AUTHOR_EMAIL="$(maestro::config "contexts.$context.git.email")"
+    export GIT_AUTHOR_NAME="$(maestro::config "zones.$zone.git.user")"
+    export GIT_AUTHOR_EMAIL="$(maestro::config "zones.$zone.git.email")"
     export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
     export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 
     # Set AWS profile
-    local aws_profile=$(maestro::config "contexts.$context.aws.profile")
+    local aws_profile=$(maestro::config "zones.$zone.aws.profile")
     if [[ -n "$aws_profile" ]]; then
         export AWS_PROFILE="$aws_profile"
-        export AWS_REGION="$(maestro::config "contexts.$context.aws.region" "us-east-1")"
+        export AWS_REGION="$(maestro::config "zones.$zone.aws.region" "us-east-1")"
     fi
 
     # Set AI provider preference
-    export MAESTRO_AI_PROVIDER="$(maestro::config "contexts.$context.ai.provider" "claude")"
-    export MAESTRO_AI_BACKEND="$(maestro::config "contexts.$context.ai.backend" "anthropic")"
+    export MAESTRO_AI_PROVIDER="$(maestro::config "zones.$zone.ai.provider" "claude")"
+    export MAESTRO_AI_BACKEND="$(maestro::config "zones.$zone.ai.backend" "anthropic")"
 
     # Set safety rules
-    export MAESTRO_SAFETY="$(maestro::config "contexts.$context.rules.safety" "relaxed")"
+    export MAESTRO_SAFETY="$(maestro::config "zones.$zone.rules.safety" "relaxed")"
 
-    utils::success "Switched to $context context"
-    session::show_context
+    utils::success "Switched to zone: $zone"
+    session::show_zone
 }
 
-session::show_context() {
-    local ctx=$(session::current_context)
+session::show_zone() {
+    local zone=$(session::current_zone)
     echo ""
-    echo "Context: $ctx"
+    echo "Zone: $zone"
     echo "  Git:     $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>"
     echo "  AWS:     ${AWS_PROFILE:-not set}"
     echo "  AI:      $MAESTRO_AI_PROVIDER ($MAESTRO_AI_BACKEND)"
     echo "  Safety:  $MAESTRO_SAFETY"
+}
+
+# Alias for backwards compatibility
+session::show_context() {
+    session::show_zone
 }
 
 # ============================================
@@ -82,28 +95,31 @@ session::show_context() {
 session::create() {
     local type="$1"
     local name="$2"
-    local context="${3:-$(session::current_context)}"
+    local zone="${3:-$(session::current_zone)}"
 
-    # Switch to context
-    session::switch "$context"
+    # Switch to zone
+    session::switch "$zone"
 
     # Determine session directory
     local session_dir
     case "$type" in
         ticket)
-            session_dir="$SESSIONS_BASE/$context/tickets/$name"
+            session_dir="$SESSIONS_BASE/$zone/tickets/$name"
             ;;
         exploration|explore)
-            session_dir="$SESSIONS_BASE/$context/explorations/$name"
+            session_dir="$SESSIONS_BASE/$zone/explorations/$name"
             ;;
         learning|learn)
-            session_dir="$SESSIONS_BASE/$context/learning/$name"
+            session_dir="$SESSIONS_BASE/$zone/learning/$name"
             ;;
         infra|infrastructure)
-            session_dir="$SESSIONS_BASE/$context/infrastructure/$name"
+            session_dir="$SESSIONS_BASE/$zone/infrastructure/$name"
+            ;;
+        investigation)
+            session_dir="$SESSIONS_BASE/$zone/investigations/$name"
             ;;
         *)
-            session_dir="$SESSIONS_BASE/$context/$type/$name"
+            session_dir="$SESSIONS_BASE/$zone/$type/$name"
             ;;
     esac
 
@@ -118,16 +134,27 @@ session::create() {
     # Copy template if exists
     local template="$MAESTRO_ROOT/sessions/templates/$type.md"
     if [[ -f "$template" ]] && [[ ! -f "$session_dir/CLAUDE.md" ]]; then
-        local session_name="$name"
         local session_date=$(date '+%Y-%m-%d')
-        sed -e "s/{{SESSION_NAME}}/$session_name/g" \
-            -e "s/{{DATE}}/$session_date/g" \
-            -e "s/{{CONTEXT}}/$context/g" \
-            "$template" > "$session_dir/CLAUDE.md"
-    fi
+        local engineer=$(maestro::config "zones.$zone.git.user" "$USER")
+        local rules=$(session::get_rules "$zone")
 
-    # Copy rules
-    session::apply_rules "$session_dir" "$context"
+        sed -e "s/{{NAME}}/$name/g" \
+            -e "s/{{DATE}}/$session_date/g" \
+            -e "s/{{CC_CONTEXT}}/$zone/g" \
+            -e "s/{{CC_ENGINEER}}/$engineer/g" \
+            -e "s/{{OBJECTIVE}}/[Describe your objective]/g" \
+            -e "s/{{TICKET_NUM}}//g" \
+            -e "s/{{TICKET_DETAILS}}//g" \
+            "$template" > "$session_dir/CLAUDE.md"
+
+        # Append rules (can't use sed for multiline)
+        if [[ -n "$rules" ]]; then
+            sed -i "s|{{RULES}}|$rules|g" "$session_dir/CLAUDE.md" 2>/dev/null || \
+                echo "$rules" >> "$session_dir/CLAUDE.md"
+        else
+            sed -i "s/{{RULES}}//g" "$session_dir/CLAUDE.md" 2>/dev/null || true
+        fi
+    fi
 
     # Navigate to session
     cd "$session_dir"
@@ -137,25 +164,23 @@ session::create() {
     echo "Session ready. Run 'ai' to start your AI assistant."
 }
 
-session::apply_rules() {
-    local session_dir="$1"
-    local context="$2"
+session::get_rules() {
+    local zone="$1"
+    local rules=""
 
-    local safety=$(maestro::config "contexts.$context.rules.safety" "relaxed")
+    local safety=$(maestro::config "zones.$zone.rules.safety" "relaxed")
     local rules_file="$MAESTRO_ROOT/sessions/rules/safety-$safety.md"
     local base_rules="$MAESTRO_ROOT/sessions/rules/base.md"
 
-    # Append rules to CLAUDE.md if they exist
-    if [[ -f "$session_dir/CLAUDE.md" ]]; then
-        if [[ -f "$base_rules" ]]; then
-            echo "" >> "$session_dir/CLAUDE.md"
-            cat "$base_rules" >> "$session_dir/CLAUDE.md"
-        fi
-        if [[ -f "$rules_file" ]]; then
-            echo "" >> "$session_dir/CLAUDE.md"
-            cat "$rules_file" >> "$session_dir/CLAUDE.md"
-        fi
+    if [[ -f "$base_rules" ]]; then
+        rules+=$(cat "$base_rules")
+        rules+=$'\n\n'
     fi
+    if [[ -f "$rules_file" ]]; then
+        rules+=$(cat "$rules_file")
+    fi
+
+    echo "$rules"
 }
 
 # ============================================
@@ -165,27 +190,41 @@ session::apply_rules() {
 session::ticket() {
     local num="$1"
     local desc="$2"
-    session::create "ticket" "$num-$(utils::slugify "$desc")" "work"
+    local zone="${3:-$(session::current_zone)}"
+    session::create "ticket" "$num-$(utils::slugify "$desc")" "$zone"
 }
 
-session::work() {
+session::explore() {
     local name="$1"
-    session::create "exploration" "$(utils::slugify "$name")" "work"
+    local zone="${2:-$(session::current_zone)}"
+    session::create "exploration" "$(utils::slugify "$name")" "$zone"
 }
 
-session::home() {
+session::investigation() {
     local name="$1"
-    session::create "exploration" "$(utils::slugify "$name")" "home"
+    local zone="${2:-$(session::current_zone)}"
+    session::create "investigation" "$(utils::slugify "$name")" "$zone"
 }
 
 session::infra() {
     local name="$1"
-    session::create "infrastructure" "$(utils::slugify "$name")" "work"
+    local zone="${2:-$(session::current_zone)}"
+    session::create "infrastructure" "$(utils::slugify "$name")" "$zone"
 }
 
 session::learn() {
     local topic="$1"
-    session::create "learning" "$(utils::slugify "$topic")" "home"
+    local zone="${2:-$(session::current_zone)}"
+    session::create "learning" "$(utils::slugify "$topic")" "$zone"
+}
+
+# Legacy aliases (zone-agnostic now)
+session::work() {
+    session::explore "$@"
+}
+
+session::home() {
+    session::explore "$@"
 }
 
 # ============================================
@@ -236,13 +275,13 @@ session::ai() {
 
 session::ensure_creds() {
     local provider="$1"
-    local ctx=$(session::current_context)
+    local zone=$(session::current_zone)
 
     case "$provider" in
         claude)
-            local backend=$(maestro::config "contexts.$ctx.ai.backend" "anthropic")
+            local backend=$(maestro::config "zones.$zone.ai.backend" "anthropic")
             if [[ "$backend" == "bedrock" ]]; then
-                local profile=$(maestro::config "contexts.$ctx.aws.profile")
+                local profile=$(maestro::config "zones.$zone.aws.profile")
                 local ttl=$(keepalive::aws_sso_ttl "$profile")
                 if [[ "$ttl" -lt 300 ]]; then
                     utils::warn "AWS credentials expiring soon, refreshing..."
@@ -251,7 +290,7 @@ session::ensure_creds() {
             fi
             ;;
         amazon-q|q)
-            local profile=$(maestro::config "contexts.$ctx.aws.profile")
+            local profile=$(maestro::config "zones.$zone.aws.profile")
             if ! keepalive::check_aws "$profile"; then
                 utils::warn "AWS credentials invalid, refreshing..."
                 keepalive::aws_sso_refresh "$profile"
@@ -277,15 +316,15 @@ session::ensure_creds() {
 # ============================================
 
 session::list() {
-    local context="${1:-$(session::current_context)}"
-    local base="$SESSIONS_BASE/$context"
+    local zone="${1:-$(session::current_zone)}"
+    local base="$SESSIONS_BASE/$zone"
 
     if [[ ! -d "$base" ]]; then
-        echo "No sessions for context: $context"
+        echo "No sessions for zone: $zone"
         return
     fi
 
-    echo "Sessions ($context):"
+    echo "Sessions ($zone):"
     find "$base" -maxdepth 2 -type d -name ".git" | while read gitdir; do
         local session_dir=$(dirname "$gitdir")
         local name=$(basename "$session_dir")
@@ -301,12 +340,12 @@ session::go() {
         return 1
     fi
 
-    local context="${1:-}"
+    local zone="${1:-}"
     local base="$SESSIONS_BASE"
 
     local sessions
-    if [[ -n "$context" ]]; then
-        sessions=$(find "$base/$context" -maxdepth 2 -type d -name ".git" 2>/dev/null | \
+    if [[ -n "$zone" ]]; then
+        sessions=$(find "$base/$zone" -maxdepth 2 -type d -name ".git" 2>/dev/null | \
             xargs -I{} dirname {} | \
             sed "s|$base/||")
     else
@@ -318,6 +357,9 @@ session::go() {
     local selected=$(echo "$sessions" | fzf --prompt="Session: ")
 
     if [[ -n "$selected" ]]; then
+        # Extract zone from path and switch
+        local selected_zone=$(echo "$selected" | cut -d'/' -f1)
+        session::switch "$selected_zone"
         cd "$base/$selected"
         utils::success "Switched to: $selected"
     fi
@@ -361,14 +403,13 @@ session::done() {
 # These aliases maintain compatibility with claude-sessions naming
 alias cc='session::ai'
 alias ccticket='session::ticket'
-alias ccw='session::work'
-alias cch='session::home'
+alias ccw='session::explore'
+alias cch='session::explore'
 alias ccinfra='session::infra'
 alias cclearn='session::learn'
 alias ccls='session::list'
 alias ccgo='session::go'
 alias cccompact='session::compact'
 alias ccdone='session::done'
-alias cc_switch_work='session::switch work'
-alias cc_switch_home='session::switch home'
-alias cc_status='session::show_context'
+alias cc_switch='session::switch'
+alias cc_status='session::show_zone'

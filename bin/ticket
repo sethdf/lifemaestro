@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# ticket - Fetch tickets from issue trackers
+# CLI wrapper for Claude Code skill tools
+# 12-Factor CLI compliant
+
+set -euo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+TOOLS_DIR="$MAESTRO_ROOT/.claude/skills/ticket-lookup/tools"
+
+source "$MAESTRO_ROOT/core/init.sh" 2>/dev/null || true
+maestro::init 2>/dev/null || true
+
+# Parse common flags
+cli::parse_common_flags "$@" 2>/dev/null || true
+set -- "${MAESTRO_ARGS[@]:-$@}"
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+    sdp|s)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: ticket sdp <ticket-number>"
+        fi
+        "$TOOLS_DIR/sdp-fetch.sh" "$@"
+        ;;
+    jira|j)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: ticket jira <issue-key>"
+        fi
+        "$TOOLS_DIR/jira-fetch.sh" "$@"
+        ;;
+    linear|l)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: ticket linear <issue-id>"
+        fi
+        "$TOOLS_DIR/linear-fetch.sh" "$@"
+        ;;
+    github|gh|g)
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: ticket github <owner/repo#num> or <#num>"
+        fi
+        "$TOOLS_DIR/github-fetch.sh" "$@"
+        ;;
+    auto|a)
+        # Auto-detect ticket type from format
+        ticket_ref="${1:-}"
+        if [[ -z "$ticket_ref" ]]; then
+            cli::die_usage "Usage: ticket auto <ticket-reference>"
+        fi
+
+        if [[ "$ticket_ref" =~ ^SDP-?([0-9]+)$ ]] || [[ "$ticket_ref" =~ ^[0-9]+$ ]]; then
+            "$TOOLS_DIR/sdp-fetch.sh" "$ticket_ref"
+        elif [[ "$ticket_ref" =~ ^[A-Z]+-[0-9]+$ ]]; then
+            "$TOOLS_DIR/jira-fetch.sh" "$ticket_ref"
+        elif [[ "$ticket_ref" =~ ^LIN- ]] || [[ "$ticket_ref" =~ linear\.app ]]; then
+            "$TOOLS_DIR/linear-fetch.sh" "$ticket_ref"
+        elif [[ "$ticket_ref" =~ ^#?[0-9]+$ ]] || [[ "$ticket_ref" =~ github\.com ]] || [[ "$ticket_ref" =~ / ]]; then
+            "$TOOLS_DIR/github-fetch.sh" "$ticket_ref"
+        else
+            echo "Error: Cannot auto-detect ticket type for: $ticket_ref" >&2
+            echo "Use explicit command: ticket sdp|jira|linear|github <ref>" >&2
+            exit 1
+        fi
+        ;;
+    version|-v|--version)
+        echo "ticket (lifemaestro) ${MAESTRO_VERSION:-0.2.0}"
+        exit 0
+        ;;
+    help|--help|-h|*)
+        cat <<EOF
+ticket - Fetch tickets from issue trackers
+
+Usage: ticket <command> <ticket-reference>
+
+Commands:
+    sdp <num>           Fetch from ServiceDesk Plus (SDP-12345 or 12345)
+    jira <key>          Fetch from Jira (PROJ-123)
+    linear <id>         Fetch from Linear (ENG-456 or UUID)
+    github <ref>        Fetch from GitHub (#123, owner/repo#123, or URL)
+    auto <ref>          Auto-detect ticket type from reference format
+
+Options:
+    -q, --quiet         Suppress non-essential output
+    -v, --version       Show version
+    -h, --help          Show this help
+
+Examples:
+    ticket sdp 12345
+    ticket jira ACME-456
+    ticket github #123
+    ticket auto SDP-12345
+    ticket auto PROJ-789
+
+Environment:
+    SDP_API_KEY         ServiceDesk Plus OAuth token
+    JIRA_EMAIL          Jira account email
+    JIRA_API_TOKEN      Jira API token
+    LINEAR_API_KEY      Linear API key
+    GITHUB_TOKEN        GitHub token (or use gh CLI)
+EOF
+        exit 0
+        ;;
+esac
