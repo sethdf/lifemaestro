@@ -15,11 +15,10 @@ Meta-skill for creating skills following official Anthropic specifications (gith
 - auto_scaffold: true
 
 ## Purpose
-Help design and create new skills that follow LifeMaestro patterns:
-- Progressive disclosure (SKILL.md → cookbook → tools)
-- Shared tools between CLI and agent
-- Token-efficient architecture
-- Core Four principles (Context, Model, Prompt, Tools)
+Help design and create new skills that follow official Anthropic patterns:
+- Progressive disclosure (SKILL.md → references → scripts)
+- Token-efficient architecture (description triggers, body routes)
+- Official structure: scripts/, references/, assets/
 
 ## Instructions
 
@@ -31,7 +30,7 @@ Help design and create new skills that follow LifeMaestro patterns:
    - What scripts/references/assets are needed?
 
 2. **Read the design guide:**
-   - Read `cookbook/skill-design.md` for official Anthropic patterns
+   - Read `references/skill-design.md` for official Anthropic patterns
 
 3. **Design the skill:**
    - Plan: scripts/ (executable), references/ (docs), assets/ (templates)
@@ -50,9 +49,10 @@ Help design and create new skills that follow LifeMaestro patterns:
 ### When user wants to IMPROVE an existing skill:
 
 1. Read the current skill files
-2. Check against `cookbook/skill-design.md` principles
+2. Check against `references/skill-design.md` principles
 3. For workflow issues: see `references/workflows.md`
 4. For output issues: see `references/output-patterns.md`
+5. For common patterns: see `references/skill-patterns.md`
 
 ### Key Official Principles:
 
