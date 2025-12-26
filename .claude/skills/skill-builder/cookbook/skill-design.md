@@ -1,5 +1,63 @@
 # Skill Design Guide
 
+This guide combines LifeMaestro patterns with Anthropic's official Claude Code skill specifications.
+
+## Official SKILL.md Format (Anthropic)
+
+```yaml
+---
+name: skill-name          # Lowercase, hyphens, max 64 characters
+description: |
+  Detailed description of what the skill does.
+  Explain when to use it and what triggers it.
+allowed-tools:            # Optional: Restrict tool access
+  - Read
+  - Bash
+  - Glob
+---
+
+# Skill Title
+
+## Instructions
+Step-by-step guidance for Claude
+
+## Examples
+Concrete use cases and sample interactions
+
+## Version History
+- v1.0.0 (date): Initial release
+```
+
+### Key Points from Official Docs
+- **Skills are model-invoked** - Claude autonomously decides when to use them
+- **Description is crucial** - It's how Claude discovers and matches skills
+- **Multi-line descriptions** - Use `|` for detailed descriptions
+- **allowed-tools** - Optional security restriction on what tools the skill can use
+
+## Writing Good Descriptions
+
+The description is how Claude discovers your skill. Be specific and explicit.
+
+### Good Description
+```yaml
+description: |
+  Analyze Excel spreadsheets, create pivot tables, and generate charts.
+  Use when working with Excel files, spreadsheets, or analyzing tabular
+  data in .xlsx format.
+```
+
+### Bad Description
+```yaml
+description: For files
+```
+
+### Description Checklist
+- [ ] Explains what the skill does
+- [ ] Explains when to use it (triggers)
+- [ ] Mentions relevant file types or keywords
+- [ ] Is specific enough to avoid false matches
+- [ ] Is broad enough to catch valid use cases
+
 ## The Planning Phase
 
 **Always begin with the end in mind.** Before writing any code:

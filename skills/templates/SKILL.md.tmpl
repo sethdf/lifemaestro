@@ -1,6 +1,13 @@
 ---
 name: {{SKILL_NAME}}
-description: {{SKILL_DESCRIPTION}}. USE WHEN {{SKILL_TRIGGER}}.
+description: |
+  {{SKILL_DESCRIPTION}}. Use when {{SKILL_TRIGGER}}.
+  Provides functionality for {{SKILL_PURPOSE}}.
+allowed-tools:
+  - Read
+  - Bash
+  - Glob
+  - Grep
 ---
 
 # {{SKILL_NAME}}
@@ -8,21 +15,22 @@ description: {{SKILL_DESCRIPTION}}. USE WHEN {{SKILL_TRIGGER}}.
 ## Variables
 - enabled: true
 
-## Purpose
-{{SKILL_PURPOSE}}
-
 ## Instructions
 
-If user requests {{SKILL_TRIGGER}}:
-1. Read `cookbook/{{SKILL_NAME}}.md` for detailed instructions
-2. Execute `tools/{{SKILL_NAME}}.sh` with appropriate arguments
-
-## Workflow
 1. Understand the user's request
-2. Read relevant cookbook documentation
-3. Execute the appropriate tool
+2. Read `cookbook/{{SKILL_NAME}}.md` for detailed instructions
+3. Execute `tools/{{SKILL_NAME}}.sh` with appropriate arguments
 4. Return results to user
 
 ## Examples
-- "{{EXAMPLE_1}}" → Execute {{SKILL_NAME}} tool
-- "{{EXAMPLE_2}}" → Execute {{SKILL_NAME}} tool
+
+### Example 1
+**User**: "{{EXAMPLE_1}}"
+**Action**: Execute {{SKILL_NAME}} tool with user's input
+
+### Example 2
+**User**: "{{EXAMPLE_2}}"
+**Action**: Execute {{SKILL_NAME}} tool with parameters
+
+## Version History
+- v1.0.0 ({{DATE}}): Initial release

@@ -62,6 +62,8 @@ slugify() {
 render_template() {
     local template="$1"
     local output="$2"
+    local today
+    today=$(date '+%Y-%m-%d')
 
     sed -e "s/{{SKILL_NAME}}/$SKILL_NAME/g" \
         -e "s/{{SKILL_SLUG}}/$SKILL_SLUG/g" \
@@ -70,6 +72,7 @@ render_template() {
         -e "s/{{SKILL_PURPOSE}}/$SKILL_PURPOSE/g" \
         -e "s/{{EXAMPLE_1}}/$EXAMPLE_1/g" \
         -e "s/{{EXAMPLE_2}}/$EXAMPLE_2/g" \
+        -e "s/{{DATE}}/$today/g" \
         "$template" > "$output"
 }
 

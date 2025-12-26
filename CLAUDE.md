@@ -30,11 +30,18 @@ Every skill ultimately boils down to:
     └── <prompt>.md
 ```
 
-### SKILL.md Structure
+### SKILL.md Structure (Official Anthropic Format)
 ```markdown
 ---
-name: skill-name
-description: One sentence. USE WHEN <trigger conditions>.
+name: skill-name              # Lowercase, hyphens, max 64 chars
+description: |
+  What this skill does in detail.
+  Use when <trigger conditions>.
+  Handles <specific use cases>.
+allowed-tools:                # Optional: restrict tool access
+  - Read
+  - Bash
+  - Glob
 ---
 
 # Skill Name
@@ -42,17 +49,27 @@ description: One sentence. USE WHEN <trigger conditions>.
 ## Variables
 - enable_feature_x: true/false
 
-## Purpose
-What this skill does and why.
-
 ## Instructions
-If <condition> AND <variable> is true:
-- Read cookbook/<relevant>.md
-- Execute tools/<script>.sh
+Step-by-step guidance for Claude:
+1. First step
+2. Second step
+3. Execute tools/<script>.sh
 
 ## Examples
-- "User says X" → Do Y
+
+### Example 1
+**User**: "Do X with Y"
+**Action**: Execute tool with parameters
+
+## Version History
+- v1.0.0 (date): Initial release
 ```
+
+### Key Official Guidelines
+- **Skills are model-invoked** - Claude decides when to use them based on description
+- **Description is crucial** - Be specific about what triggers the skill
+- **allowed-tools** - Optional security to restrict what the skill can do
+- **Version History** - Track changes for team collaboration
 
 ### Progressive Disclosure
 Don't dump everything into context. Instead:
