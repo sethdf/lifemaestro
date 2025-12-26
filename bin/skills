@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# List available skills with descriptions
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+SKILLS_DIR="$MAESTRO_ROOT/.claude/skills"
+
+# Colors
+BLUE='\033[0;34m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo -e "${BLUE}Available Skills${NC}"
+echo ""
+
+# Group by prefix
+print_group() {
+    local prefix="$1"
+    local label="$2"
+    local color="$3"
+    local found=0
+
+    for skill_dir in "$SKILLS_DIR"/${prefix}*/; do
+        if [[ -d "$skill_dir" ]]; then
+            if [[ $found -eq 0 ]]; then
+                echo -e "${color}${label}:${NC}"
+                found=1
+            fi
+            name=$(basename "$skill_dir")
+            # Extract description from SKILL.md - get the actual description text
+            if [[ -f "$skill_dir/SKILL.md" ]]; then
+                desc=$(awk '
+                    /^description:/ {
+                        # Check for inline description
+                        if ($0 ~ /description: [^|]/) {
+                            sub(/^description: */, "")
+                            print
+                            exit
+                        }
+                        # Multi-line description
+                        getline
+                        while (/^  [^-]/ && !/license:/ && !/allowed/) {
+                            gsub(/^  /, "")
+                            print
+                            exit
+                        }
+                    }
+                ' "$skill_dir/SKILL.md")
+                printf "  %-32s ${NC}%s${NC}\n" "$name" "${desc:0:45}"
+            else
+                printf "  %-32s ${NC}(no SKILL.md)${NC}\n" "$name"
+            fi
+        fi
+    done
+    [[ $found -eq 1 ]] && echo ""
+}
+
+# Custom/local skills (no prefix)
+echo -e "${GREEN}Local Skills:${NC}"
+for skill_dir in "$SKILLS_DIR"/*/; do
+    name=$(basename "$skill_dir")
+    # Skip prefixed skills
+    [[ "$name" == pai-* || "$name" == anthropic-* ]] && continue
+
+    if [[ -f "$skill_dir/SKILL.md" ]]; then
+        desc=$(awk '
+            /^description:/ {
+                if ($0 ~ /description: [^|]/) {
+                    sub(/^description: */, "")
+                    print
+                    exit
+                }
+                getline
+                while (/^  [^-]/ && !/license:/ && !/allowed/) {
+                    gsub(/^  /, "")
+                    print
+                    exit
+                }
+            }
+        ' "$skill_dir/SKILL.md")
+        printf "  %-32s %s\n" "$name" "${desc:0:45}"
+    else
+        printf "  %-32s (no SKILL.md)\n" "$name"
+    fi
+done
+echo ""
+
+print_group "pai-" "PAI Skills" "$YELLOW"
+print_group "anthropic-" "Anthropic Skills" "$BLUE"
+
+echo "Tip: Skills trigger on natural language. Just describe what you want!"
