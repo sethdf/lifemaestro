@@ -1,6 +1,10 @@
 ---
 name: ticket-lookup
 description: Look up ticket details from issue trackers. Use when user mentions a ticket number, issue, or wants to start work on a ticket (SDP, Jira, Linear, GitHub Issues).
+allowed-tools:
+  - Bash
+  - Read
+  - WebFetch
 ---
 
 # Ticket Lookup
@@ -32,19 +36,19 @@ When user mentions a ticket:
 ### Fetching Ticket Details
 
 If ticket is SDP type AND zone has `features.sdp = true`:
-- Read cookbook/sdp-lookup.md for API details
+- Read references/sdp-lookup.md for API details
 - Run `tools/sdp-fetch.sh <ticket-number>`
 
 If ticket is Jira type AND zone has `features.jira = true`:
-- Read cookbook/jira-lookup.md for API details
+- Read references/jira-lookup.md for API details
 - Run `tools/jira-fetch.sh <ticket-key>`
 
 If ticket is Linear type AND zone has `features.linear = true`:
-- Read cookbook/linear-lookup.md for API details
+- Read references/linear-lookup.md for API details
 - Run `tools/linear-fetch.sh <issue-id>`
 
 If ticket is GitHub Issue AND zone has `features.github_issues = true`:
-- Read cookbook/github-issues-lookup.md for API details
+- Read references/github-issues-lookup.md for API details
 - Run `tools/github-fetch.sh <owner> <repo> <issue-number>`
 
 ### Creating Sessions from Tickets

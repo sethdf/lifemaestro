@@ -1,6 +1,10 @@
 ---
 name: session-manager
 description: Manage Claude Code sessions. Use when user wants to create a new session, list sessions, start work on a ticket, or switch to an existing session.
+allowed-tools:
+  - Bash
+  - Read
+  - Write
 ---
 
 # Session Manager
@@ -21,13 +25,13 @@ Sessions are git-tracked working directories with CLAUDE.md files for Claude Cod
 
 If user wants to create a new session or start a new project:
 1. Detect current zone using zone-context skill
-2. Read cookbook/session-create.md for creation procedure
+2. Read references/session-create.md for creation procedure
 3. Ask user for: session name, category (exploration/ticket/learning), and objective
 4. Run `tools/session-create.sh <zone> <category> <name> [objective]`
 
 If user wants to start work on a ticket:
 1. First use ticket-lookup skill to fetch ticket details
-2. Read cookbook/ticket-session.md for ticket-specific session setup
+2. Read references/ticket-session.md for ticket-specific session setup
 3. Run `tools/session-create.sh <zone> tickets <ticket-id>-<slug>` with ticket context
 
 ### Listing Sessions

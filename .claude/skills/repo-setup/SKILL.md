@@ -1,6 +1,10 @@
 ---
 name: repo-setup
 description: Set up GitHub repositories for Claude Code sessions. Use when user wants to create a new project, initialize session repos, or set up GitHub repos.
+allowed-tools:
+  - Bash
+  - Read
+  - Write
 ---
 
 # Repository Setup
@@ -20,7 +24,7 @@ Creates and configures GitHub repositories for Claude Code sessions and standalo
 
 If user wants to set up session repositories for a zone:
 1. Detect current zone or ask which zone
-2. Read cookbook/session-repos.md for the setup procedure
+2. Read references/session-repos.md for the setup procedure
 3. Run `tools/setup-session-repos.sh <zone>`
 
 This creates the category repositories (tickets, explorations, learning) for the zone.
@@ -29,7 +33,7 @@ This creates the category repositories (tickets, explorations, learning) for the
 
 If user wants to create a new project (ccnew equivalent):
 1. Ask for project name and zone
-2. Read cookbook/new-project.md for creation steps
+2. Read references/new-project.md for creation steps
 3. Run `tools/new-project.sh <name> <zone>`
 
 ### Repository Configuration

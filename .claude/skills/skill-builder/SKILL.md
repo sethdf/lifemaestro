@@ -4,6 +4,11 @@ description: |
   Build new skills following official Anthropic patterns. Use when user wants to
   create, design, scaffold, or improve a skill. Triggers: create skill, new skill,
   build skill, scaffold skill, improve skill, skill design.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - Glob
 ---
 
 # Skill Builder

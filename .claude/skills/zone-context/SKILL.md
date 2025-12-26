@@ -1,6 +1,9 @@
 ---
 name: zone-context
 description: Manage LifeMaestro zones (work contexts). Use when user mentions switching context, zones, work vs personal, or asks about current zone.
+allowed-tools:
+  - Bash
+  - Read
 ---
 
 # Zone Context Management
@@ -24,17 +27,17 @@ If user asks about current zone or context:
 - Report the active zone and its settings
 
 If user wants to switch zones:
-- Read cookbook/zone-switch.md for the switch procedure
+- Read references/zone-switch.md for the switch procedure
 - Run `tools/zone-switch.sh <zone-name>` to apply the switch
 
 If user wants to list available zones:
 - Run `tools/zone-list.sh` to show configured zones
 
 If user wants to configure git for current zone AND enable_git_config is true:
-- Read cookbook/git-config.md for git configuration steps
+- Read references/git-config.md for git configuration steps
 
 If user wants to switch AWS profile AND enable_aws_switch is true:
-- Read cookbook/aws-switch.md for AWS SSO/profile switching
+- Read references/aws-switch.md for AWS SSO/profile switching
 
 ### Zone Detection Logic
 
@@ -65,5 +68,5 @@ User: "List my zones"
 -> Run tools/zone-list.sh
 
 User: "Set up git for this zone"
--> Read cookbook/git-config.md, then apply git config
+-> Read references/git-config.md, then apply git config
 ```
