@@ -26,6 +26,21 @@ vendors:
         description: "Configuration templates"
 
   # ============================================
+  # ANTHROPIC SKILLS (Official)
+  # Official skill patterns and examples from Anthropic
+  # Reference source for best practices
+  # ============================================
+  anthropic-skills:
+    repo: "https://github.com/anthropics/skills.git"
+    branch: "main"
+    description: "Official Anthropic skill patterns and examples"
+    enabled: true
+    integrations:
+      - type: reference
+        source: "/"
+        description: "Official skill design patterns and examples"
+
+  # ============================================
   # FABRIC (Daniel Miessler)
   # NOT NEEDED - PAI includes all 247 Fabric patterns
   # PAI's patterns are at: .claude/Skills/Fabric/tools/patterns/

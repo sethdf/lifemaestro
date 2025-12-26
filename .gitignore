@@ -11,6 +11,7 @@ config.local.toml
 # Vendor repos (cloned from GitHub, not committed)
 vendor/pai/
 vendor/fabric/
+vendor/anthropic-skills/
 # Keep vendor config and scripts
 !vendor/vendor.yaml
 !vendor/sync.sh
