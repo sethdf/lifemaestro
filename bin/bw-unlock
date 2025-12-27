@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Usage: source bw-unlock
+# Unlocks Bitwarden vault and exports BW_SESSION
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+MASTER_FILE="$PROJECT_ROOT/secrets/bw-master"
+
+# Check if already unlocked
+if bw unlock --check &>/dev/null; then
+    echo "Bitwarden already unlocked"
+    return 0 2>/dev/null || exit 0
+fi
+
+# Get master password
+if [[ -f "$MASTER_FILE" ]]; then
+    BW_MASTER=$(cat "$MASTER_FILE")
+else
+    echo -n "Master password: "
+    read -rs BW_MASTER
+    echo
+fi
+
+# Unlock and export session
+BW_SESSION=$(bw unlock --raw "$BW_MASTER")
+if [[ -n "$BW_SESSION" ]]; then
+    export BW_SESSION
+    echo "Bitwarden unlocked"
+else
+    echo "Failed to unlock Bitwarden" >&2
+    return 1 2>/dev/null || exit 1
+fi

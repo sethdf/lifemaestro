@@ -2,6 +2,9 @@
 secrets/*.yaml
 secrets/*.yml
 secrets/*.json
+secrets/bw-master
+secrets/bw-client-id
+secrets/bw-client-secret
 !secrets/.gitattributes
 !secrets/.gitkeep
 
