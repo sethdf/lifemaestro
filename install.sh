@@ -182,6 +182,144 @@ else
     echo "  dasel already installed"
 fi
 
+# Install jq (JSON processor)
+if ! command -v jq &>/dev/null; then
+    echo "  Installing jq..."
+    JQ_VERSION=$(curl -s "https://api.github.com/repos/jqlang/jq/releases/latest" | grep '"tag_name"' | sed -E 's/.*"jq-([^"]+)".*/\1/')
+    case "$PLATFORM" in
+        linux-amd64)  JQ_URL="https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64" ;;
+        linux-arm64)  JQ_URL="https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-arm64" ;;
+        darwin-amd64) JQ_URL="https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-macos-amd64" ;;
+        darwin-arm64) JQ_URL="https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-macos-arm64" ;;
+        *) echo "    Unsupported platform for jq: $PLATFORM"; JQ_URL="" ;;
+    esac
+    if [[ -n "$JQ_URL" ]]; then
+        curl -fsSL "$JQ_URL" -o "$BIN_DIR/jq"
+        chmod +x "$BIN_DIR/jq"
+        echo "    jq installed"
+    fi
+else
+    echo "  jq already installed"
+fi
+
+# Install fzf (fuzzy finder)
+if ! command -v fzf &>/dev/null; then
+    echo "  Installing fzf..."
+    FZF_VERSION=$(curl -s "https://api.github.com/repos/junegunn/fzf/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
+    case "$PLATFORM" in
+        linux-amd64)  FZF_ARCH="fzf-${FZF_VERSION}-linux_amd64" ;;
+        linux-arm64)  FZF_ARCH="fzf-${FZF_VERSION}-linux_arm64" ;;
+        darwin-amd64) FZF_ARCH="fzf-${FZF_VERSION}-darwin_amd64" ;;
+        darwin-arm64) FZF_ARCH="fzf-${FZF_VERSION}-darwin_arm64" ;;
+        *) echo "    Unsupported platform for fzf: $PLATFORM"; FZF_ARCH="" ;;
+    esac
+    if [[ -n "$FZF_ARCH" ]]; then
+        curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/${FZF_ARCH}.tar.gz" | tar xz -C "$BIN_DIR"
+        echo "    fzf installed"
+    fi
+else
+    echo "  fzf already installed"
+fi
+
+# Install gh (GitHub CLI)
+if ! command -v gh &>/dev/null; then
+    echo "  Installing gh..."
+    GH_VERSION=$(curl -s "https://api.github.com/repos/cli/cli/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+    case "$PLATFORM" in
+        linux-amd64)  GH_ARCH="gh_${GH_VERSION}_linux_amd64" ;;
+        linux-arm64)  GH_ARCH="gh_${GH_VERSION}_linux_arm64" ;;
+        darwin-amd64) GH_ARCH="gh_${GH_VERSION}_macOS_amd64" ;;
+        darwin-arm64) GH_ARCH="gh_${GH_VERSION}_macOS_arm64" ;;
+        *) echo "    Unsupported platform for gh: $PLATFORM"; GH_ARCH="" ;;
+    esac
+    if [[ -n "$GH_ARCH" ]]; then
+        curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/${GH_ARCH}.tar.gz" | tar xz -C /tmp
+        mv "/tmp/${GH_ARCH}/bin/gh" "$BIN_DIR/"
+        rm -rf "/tmp/${GH_ARCH}"
+        echo "    gh installed"
+    fi
+else
+    echo "  gh already installed"
+fi
+
+# Install himalaya (email client)
+if ! command -v himalaya &>/dev/null; then
+    echo "  Installing himalaya..."
+    HIMALAYA_VERSION=$(curl -s "https://api.github.com/repos/pimalaya/himalaya/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+    case "$PLATFORM" in
+        linux-amd64)  HIMALAYA_ARCH="himalaya.x86_64-linux" ;;
+        linux-arm64)  HIMALAYA_ARCH="himalaya.aarch64-linux" ;;
+        darwin-amd64) HIMALAYA_ARCH="himalaya.x86_64-darwin" ;;
+        darwin-arm64) HIMALAYA_ARCH="himalaya.aarch64-darwin" ;;
+        *) echo "    Unsupported platform for himalaya: $PLATFORM"; HIMALAYA_ARCH="" ;;
+    esac
+    if [[ -n "$HIMALAYA_ARCH" ]]; then
+        curl -fsSL "https://github.com/pimalaya/himalaya/releases/download/v${HIMALAYA_VERSION}/${HIMALAYA_ARCH}.tgz" | tar xz -C "$BIN_DIR"
+        echo "    himalaya installed"
+    fi
+else
+    echo "  himalaya already installed"
+fi
+
+# Install bun (JavaScript runtime)
+if ! command -v bun &>/dev/null; then
+    echo "  Installing bun..."
+    curl -fsSL https://bun.sh/install | bash 2>/dev/null && echo "    bun installed" || echo "    bun install failed"
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+else
+    echo "  bun already installed"
+fi
+
+# Install Node.js/npm if not present (needed for some npm packages)
+if ! command -v npm &>/dev/null && ! command -v bun &>/dev/null; then
+    echo "  Installing Node.js..."
+    case "$PLATFORM" in
+        linux-*)
+            curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - 2>/dev/null && \
+            sudo apt-get install -y nodejs 2>/dev/null || \
+            echo "    Node.js install failed - install manually"
+            ;;
+        darwin-*)
+            if command -v brew &>/dev/null; then
+                brew install node 2>/dev/null && echo "    Node.js installed" || echo "    Node.js install failed"
+            else
+                echo "    Install Node.js manually or install Homebrew first"
+            fi
+            ;;
+    esac
+else
+    echo "  Node.js/npm already installed"
+fi
+
+# Install Bitwarden CLI
+if ! command -v bw &>/dev/null; then
+    echo "  Installing Bitwarden CLI..."
+    if command -v bun &>/dev/null; then
+        bun install -g @bitwarden/cli 2>/dev/null && echo "    bw installed (bun)" || echo "    bw install failed"
+    elif command -v npm &>/dev/null; then
+        npm install -g @bitwarden/cli 2>/dev/null && echo "    bw installed (npm)" || echo "    bw install failed"
+    else
+        echo "    Skipping bw (npm/bun not available)"
+    fi
+else
+    echo "  bw already installed"
+fi
+
+# Install Claude Code
+if ! command -v claude &>/dev/null; then
+    echo "  Installing Claude Code..."
+    if command -v bun &>/dev/null; then
+        bun install -g @anthropic-ai/claude-code 2>/dev/null && echo "    claude installed (bun)" || echo "    claude install failed"
+    elif command -v npm &>/dev/null; then
+        npm install -g @anthropic-ai/claude-code 2>/dev/null && echo "    claude installed (npm)" || echo "    claude install failed"
+    else
+        echo "    Skipping claude (npm/bun not available)"
+    fi
+else
+    echo "  claude already installed"
+fi
+
 echo ""
 echo "Installation complete!"
 echo ""
@@ -198,7 +336,6 @@ echo "  3. Run: vendor sync pai"
 echo "  4. Update anytime: vendor update pai"
 echo ""
 echo "Optional: Install additional AI tools"
-echo "  - Claude:  npm install -g @anthropic-ai/claude-code"
 echo "  - Ollama:  curl -fsSL https://ollama.ai/install.sh | sh"
 echo "  - Aider:   pip install aider-chat"
 echo "  - llm:     pip install llm"
