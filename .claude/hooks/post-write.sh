@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Post-Write hook - auto-format or validate written files
-# Input: JSON with tool_input.file_path and tool_output
+# Usage: echo '{"tool_input":{"file_path":"foo.sh"}}' | post-write.sh
+# Input: JSON on stdin with tool_input.file_path and tool_output
+# Note: Omits -e flag for fault tolerance (jq returns 1 on invalid JSON)
+
+set -uo pipefail
 
 # Read input
 input=$(cat)

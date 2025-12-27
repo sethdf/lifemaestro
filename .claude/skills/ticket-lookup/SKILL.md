@@ -25,7 +25,7 @@ Fetches ticket details from various issue tracking systems based on the current 
 
 When user mentions a ticket:
 
-1. First, detect current zone: run `tools/zone-detect.sh` (from zone-context skill)
+1. First, detect current zone: run `scripts/zone-detect.sh` (from zone-context skill)
 2. Check which ticket features are enabled for the zone
 3. Parse the ticket reference to determine type:
    - `SDP-12345` or just `12345` in SDP-enabled zone -> ServiceDesk Plus
@@ -37,19 +37,19 @@ When user mentions a ticket:
 
 If ticket is SDP type AND zone has `features.sdp = true`:
 - Read references/sdp-lookup.md for API details
-- Run `tools/sdp-fetch.sh <ticket-number>`
+- Run `scripts/sdp-fetch.sh <ticket-number>`
 
 If ticket is Jira type AND zone has `features.jira = true`:
 - Read references/jira-lookup.md for API details
-- Run `tools/jira-fetch.sh <ticket-key>`
+- Run `scripts/jira-fetch.sh <ticket-key>`
 
 If ticket is Linear type AND zone has `features.linear = true`:
 - Read references/linear-lookup.md for API details
-- Run `tools/linear-fetch.sh <issue-id>`
+- Run `scripts/linear-fetch.sh <issue-id>`
 
 If ticket is GitHub Issue AND zone has `features.github_issues = true`:
 - Read references/github-issues-lookup.md for API details
-- Run `tools/github-fetch.sh <owner> <repo> <issue-number>`
+- Run `scripts/github-fetch.sh <owner> <repo> <issue-number>`
 
 ### Creating Sessions from Tickets
 

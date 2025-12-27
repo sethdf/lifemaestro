@@ -23,15 +23,15 @@ Zones are flexible namespaces that configure git identity, AWS profiles, GitHub 
 ### Zone Operations
 
 If user asks about current zone or context:
-- Run `tools/zone-detect.sh` to detect zone from current directory
+- Run `scripts/zone-detect.sh` to detect zone from current directory
 - Report the active zone and its settings
 
 If user wants to switch zones:
 - Read references/zone-switch.md for the switch procedure
-- Run `tools/zone-switch.sh <zone-name>` to apply the switch
+- Run `scripts/zone-switch.sh <zone-name>` to apply the switch
 
 If user wants to list available zones:
-- Run `tools/zone-list.sh` to show configured zones
+- Run `scripts/zone-list.sh` to show configured zones
 
 If user wants to configure git for current zone AND enable_git_config is true:
 - Read references/git-config.md for git configuration steps
@@ -59,13 +59,13 @@ Zones are defined in config.toml under `[zones.<name>]`. Each zone can have:
 
 ```
 User: "What zone am I in?"
--> Run tools/zone-detect.sh
+-> Run scripts/zone-detect.sh
 
 User: "Switch to work context"
--> Run tools/zone-switch.sh acme-corp
+-> Run scripts/zone-switch.sh acme-corp
 
 User: "List my zones"
--> Run tools/zone-list.sh
+-> Run scripts/zone-list.sh
 
 User: "Set up git for this zone"
 -> Read references/git-config.md, then apply git config

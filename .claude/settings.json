@@ -11,7 +11,22 @@
       "Read(.env*)",
       "Read(secrets/*)",
       "Read(**/credentials*)",
-      "Read(**/*secret*)"
+      "Read(**/*secret*)",
+      "Read(**/*password*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*token*)",
+      "Write(.env*)",
+      "Write(secrets/*)",
+      "Write(**/credentials*)",
+      "Write(**/*secret*)",
+      "Write(**/*.pem)",
+      "Write(**/*.key)",
+      "Write(~/.ssh/*)",
+      "Write(~/.gnupg/*)",
+      "Write(~/.config/himalaya/*)",
+      "Write(~/.gcalcli_oauth)",
+      "Write(~/.thallo/*)"
     ]
   },
   "hooks": {

@@ -9,6 +9,8 @@ KEEPALIVE_LOG="$MAESTRO_STATE/keepalive.log"
 AWS_REFRESH_THRESHOLD=$(maestro::config 'keepalive.thresholds.aws_sso' 3600)
 OAUTH_REFRESH_THRESHOLD=$(maestro::config 'keepalive.thresholds.oauth' 600)
 AZURE_REFRESH_THRESHOLD=$(maestro::config 'keepalive.thresholds.azure_ad' 3000)
+GCP_REFRESH_THRESHOLD=$(maestro::config 'keepalive.thresholds.gcp' 600)
+CLAUDE_CODE_REFRESH_THRESHOLD=$(maestro::config 'keepalive.thresholds.claude_code' 86400)
 
 # ============================================
 # AWS SSO
@@ -99,6 +101,197 @@ keepalive::azure_refresh() {
 
 keepalive::check_azure() {
     az account get-access-token &>/dev/null
+}
+
+# ============================================
+# GCP (Google Cloud Platform)
+# ============================================
+
+keepalive::gcp_ttl() {
+    local creds_file="$HOME/.config/gcloud/application_default_credentials.json"
+
+    # Check for ADC credentials
+    if [[ ! -f "$creds_file" ]]; then
+        echo "0"
+        return
+    fi
+
+    # ADC refresh tokens don't expire, but access tokens do
+    # Check if we can get a valid token
+    local token_info
+    token_info=$(gcloud auth application-default print-access-token 2>/dev/null) || {
+        echo "0"
+        return
+    }
+
+    # If we got a token, check its expiry via tokeninfo endpoint
+    local expiry
+    expiry=$(curl -s "https://oauth2.googleapis.com/tokeninfo?access_token=$token_info" 2>/dev/null | \
+        jq -r '.expires_in // 0' 2>/dev/null)
+
+    echo "${expiry:-0}"
+}
+
+keepalive::gcp_refresh() {
+    keepalive::log "Refreshing GCP credentials"
+
+    # Try to refresh silently first
+    if gcloud auth application-default print-access-token &>/dev/null; then
+        keepalive::log "GCP credentials valid"
+        return 0
+    fi
+
+    utils::notify "GCP Login Required" "Application default credentials expired" "critical"
+
+    if [[ -n "${DISPLAY:-}" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        ${TERMINAL:-x-terminal-emulator} -e "gcloud auth application-default login; read -p 'Press enter to close'" &
+    fi
+
+    return 1
+}
+
+keepalive::check_gcp() {
+    gcloud auth application-default print-access-token &>/dev/null
+}
+
+keepalive::gcp_project() {
+    gcloud config get-value project 2>/dev/null
+}
+
+# ============================================
+# VERTEX AI (Gemini via GCP)
+# ============================================
+
+keepalive::check_vertex_ai() {
+    local project="${1:-$(keepalive::gcp_project)}"
+    local region="${2:-us-central1}"
+
+    [[ -z "$project" ]] && return 1
+
+    # Check if we can list models (lightweight check)
+    curl -s -o /dev/null -w "%{http_code}" \
+        -H "Authorization: Bearer $(gcloud auth application-default print-access-token 2>/dev/null)" \
+        "https://${region}-aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/google/models" \
+        2>/dev/null | grep -q "200"
+}
+
+# ============================================
+# CLAUDE CODE (OAuth)
+# ============================================
+
+keepalive::claude_code_auth_file() {
+    # Claude Code stores auth in different locations
+    local possible_paths=(
+        "$HOME/.claude/auth.json"
+        "$HOME/.config/claude/auth.json"
+        "$HOME/.claude.json"
+    )
+
+    for path in "${possible_paths[@]}"; do
+        [[ -f "$path" ]] && { echo "$path"; return 0; }
+    done
+
+    return 1
+}
+
+keepalive::claude_code_ttl() {
+    local auth_file
+    auth_file=$(keepalive::claude_code_auth_file) || { echo "0"; return; }
+
+    local expires_at
+    expires_at=$(jq -r '.expiresAt // .expires_at // .expiry // empty' "$auth_file" 2>/dev/null)
+
+    [[ -z "$expires_at" ]] && { echo "-1"; return; }  # -1 means no expiry info (could be valid)
+
+    local expires_epoch now
+    now=$(date +%s)
+
+    # Try parsing as epoch or ISO date
+    if [[ "$expires_at" =~ ^[0-9]+$ ]]; then
+        expires_epoch="$expires_at"
+    else
+        if date --version &>/dev/null 2>&1; then
+            expires_epoch=$(date -d "$expires_at" +%s 2>/dev/null)
+        else
+            expires_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$expires_at" +%s 2>/dev/null)
+        fi
+    fi
+
+    [[ -z "$expires_epoch" ]] && { echo "-1"; return; }
+
+    echo $((expires_epoch - now))
+}
+
+keepalive::check_claude_code() {
+    # Check if claude CLI is authenticated
+    if command -v claude &>/dev/null; then
+        # Try a simple command that requires auth
+        claude --version &>/dev/null && return 0
+    fi
+
+    # Fallback: check if auth file exists and has content
+    local auth_file
+    auth_file=$(keepalive::claude_code_auth_file) || return 1
+
+    [[ -s "$auth_file" ]]
+}
+
+keepalive::claude_code_refresh() {
+    keepalive::log "Claude Code auth needs refresh"
+
+    utils::notify "Claude Code Login Required" "Run 'claude login' to re-authenticate" "critical"
+
+    if [[ -n "${DISPLAY:-}" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        ${TERMINAL:-x-terminal-emulator} -e "claude login; read -p 'Press enter to close'" &
+    fi
+
+    return 1
+}
+
+# ============================================
+# BITWARDEN
+# ============================================
+
+keepalive::bw_status() {
+    command -v bw &>/dev/null || { echo "not_installed"; return; }
+    bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unknown"
+}
+
+keepalive::check_bitwarden() {
+    [[ "$(keepalive::bw_status)" == "unlocked" ]]
+}
+
+keepalive::bw_refresh() {
+    local status=$(keepalive::bw_status)
+
+    case "$status" in
+        unlocked)
+            keepalive::log "Bitwarden: Already unlocked"
+            return 0
+            ;;
+        locked)
+            keepalive::log "Bitwarden vault locked, attempting unlock..."
+            # Try to unlock - will prompt for master password
+            if BW_SESSION=$(bw unlock --raw 2>/dev/null); then
+                export BW_SESSION
+                keepalive::log "Bitwarden: Unlocked"
+                return 0
+            fi
+            utils::notify "Bitwarden Locked" "Vault needs to be unlocked" "normal"
+            return 1
+            ;;
+        unauthenticated)
+            utils::notify "Bitwarden Login Required" "Run 'bw login' to authenticate" "critical"
+            return 1
+            ;;
+        not_installed)
+            return 0  # Not an error if not installed
+            ;;
+        *)
+            keepalive::log "Bitwarden: Unknown status ($status)"
+            return 1
+            ;;
+    esac
 }
 
 # ============================================
@@ -233,6 +426,28 @@ keepalive::check_all() {
             fi
         fi
 
+        # GCP
+        local gcp_project=$(maestro::config "contexts.$ctx.gcp.project")
+        if [[ -n "$gcp_project" ]]; then
+            local ttl=$(keepalive::gcp_ttl)
+            keepalive::log "  GCP ($gcp_project): $(utils::format_duration $ttl) remaining"
+
+            if [[ "$ttl" -lt "$GCP_REFRESH_THRESHOLD" ]]; then
+                keepalive::gcp_refresh || status=1
+            fi
+        fi
+
+        # Vertex AI (Gemini via GCP)
+        if [[ "$ai_backend" == "vertex" ]] || [[ "$ai_backend" == "vertex_ai" ]]; then
+            local gcp_region=$(maestro::config "contexts.$ctx.gcp.region" "us-central1")
+            if ! keepalive::check_vertex_ai "$gcp_project" "$gcp_region"; then
+                keepalive::log "  Vertex AI: FAILED"
+                status=1
+            else
+                keepalive::log "  Vertex AI: OK"
+            fi
+        fi
+
         # Mail OAuth
         local mail_account=$(maestro::config "contexts.$ctx.mail.account")
         if [[ -n "$mail_account" ]] && command -v himalaya &>/dev/null; then
@@ -267,6 +482,43 @@ keepalive::check_all() {
             fi
         fi
     done
+
+    # Check Bitwarden
+    if [[ "$(maestro::config 'secrets.bitwarden.enabled')" == "true" ]] && command -v bw &>/dev/null; then
+        local bw_status=$(keepalive::bw_status)
+        case "$bw_status" in
+            unlocked)
+                keepalive::log "  Bitwarden: OK (unlocked)"
+                ;;
+            locked)
+                keepalive::log "  Bitwarden: Locked"
+                # Don't auto-unlock - requires master password interaction
+                ;;
+            unauthenticated)
+                keepalive::log "  Bitwarden: Not logged in"
+                status=1
+                ;;
+        esac
+    fi
+
+    # Check Claude Code (team/OAuth)
+    if [[ "$(maestro::config 'ai.claude_code.enabled')" == "true" ]] && command -v claude &>/dev/null; then
+        local cc_ttl=$(keepalive::claude_code_ttl)
+        if [[ "$cc_ttl" -eq -1 ]]; then
+            # No expiry info - just check if working
+            if keepalive::check_claude_code; then
+                keepalive::log "  Claude Code: OK"
+            else
+                keepalive::log "  Claude Code: Not authenticated"
+                keepalive::claude_code_refresh || status=1
+            fi
+        elif [[ "$cc_ttl" -lt "$CLAUDE_CODE_REFRESH_THRESHOLD" ]]; then
+            keepalive::log "  Claude Code: $(utils::format_duration $cc_ttl) remaining"
+            keepalive::claude_code_refresh || status=1
+        else
+            keepalive::log "  Claude Code: OK ($(utils::format_duration $cc_ttl) remaining)"
+        fi
+    fi
 
     keepalive::log "Credential check complete (status: $status)"
     return $status
@@ -351,6 +603,27 @@ keepalive::status() {
             fi
         fi
 
+        # GCP
+        local gcp_project=$(maestro::config "contexts.$ctx.gcp.project")
+        if [[ -n "$gcp_project" ]]; then
+            local ttl=$(keepalive::gcp_ttl)
+            if [[ "$ttl" -gt 0 ]]; then
+                echo "  GCP ($gcp_project): ✅ $(utils::format_duration $ttl) remaining"
+            else
+                echo "  GCP ($gcp_project): ❌ EXPIRED or not authenticated"
+            fi
+        fi
+
+        # Vertex AI
+        if [[ "$ai_backend" == "vertex" ]] || [[ "$ai_backend" == "vertex_ai" ]]; then
+            local gcp_region=$(maestro::config "contexts.$ctx.gcp.region" "us-central1")
+            if keepalive::check_vertex_ai "$gcp_project" "$gcp_region"; then
+                echo "  Vertex AI: ✅ Accessible"
+            else
+                echo "  Vertex AI: ❌ Not accessible"
+            fi
+        fi
+
         # Mail
         local mail_account=$(maestro::config "contexts.$ctx.mail.account")
         if [[ -n "$mail_account" ]] && command -v himalaya &>/dev/null; then
@@ -385,6 +658,47 @@ keepalive::status() {
             echo "  $provider: ⚪ Not set"
         fi
     done
+
+    echo ""
+    echo "[Bitwarden]"
+    if command -v bw &>/dev/null; then
+        local bw_status=$(keepalive::bw_status)
+        case "$bw_status" in
+            unlocked)
+                echo "  Bitwarden: ✅ Unlocked"
+                ;;
+            locked)
+                echo "  Bitwarden: 🔒 Locked (run 'bw unlock')"
+                ;;
+            unauthenticated)
+                echo "  Bitwarden: ❌ Not logged in (run 'bw login')"
+                ;;
+            *)
+                echo "  Bitwarden: ⚠️  Unknown status"
+                ;;
+        esac
+    else
+        echo "  Bitwarden: ⚪ Not installed"
+    fi
+
+    echo ""
+    echo "[Claude Code]"
+    if command -v claude &>/dev/null; then
+        local cc_ttl=$(keepalive::claude_code_ttl)
+        if [[ "$cc_ttl" -eq -1 ]]; then
+            if keepalive::check_claude_code; then
+                echo "  Claude Code: ✅ Authenticated"
+            else
+                echo "  Claude Code: ❌ Not authenticated"
+            fi
+        elif [[ "$cc_ttl" -gt 0 ]]; then
+            echo "  Claude Code: ✅ $(utils::format_duration $cc_ttl) remaining"
+        else
+            echo "  Claude Code: ❌ Token expired"
+        fi
+    else
+        echo "  Claude Code: ⚪ Not installed"
+    fi
 
     echo ""
     if keepalive::running; then

@@ -27,28 +27,28 @@ If user wants to create a new session or start a new project:
 1. Detect current zone using zone-context skill
 2. Read references/session-create.md for creation procedure
 3. Ask user for: session name, category (exploration/ticket/learning), and objective
-4. Run `tools/session-create.sh <zone> <category> <name> [objective]`
+4. Run `scripts/session-create.sh <zone> <category> <name> [objective]`
 
 If user wants to start work on a ticket:
 1. First use ticket-lookup skill to fetch ticket details
 2. Read references/ticket-session.md for ticket-specific session setup
-3. Run `tools/session-create.sh <zone> tickets <ticket-id>-<slug>` with ticket context
+3. Run `scripts/session-create.sh <zone> tickets <ticket-id>-<slug>` with ticket context
 
 ### Listing Sessions
 
 If user wants to list or find sessions:
-- Run `tools/session-list.sh [zone] [category]`
+- Run `scripts/session-list.sh [zone] [category]`
 - Supports filtering by zone and category
 
 If user wants to search sessions:
-- Run `tools/session-search.sh <query>`
+- Run `scripts/session-search.sh <query>`
 - Searches session names and CLAUDE.md content
 
 ### Navigating Sessions
 
 If user wants to go to or switch to a session:
-- Run `tools/session-go.sh` for interactive selection (requires fzf)
-- Or `tools/session-go.sh <partial-name>` for direct navigation
+- Run `scripts/session-go.sh` for interactive selection (requires fzf)
+- Or `scripts/session-go.sh <partial-name>` for direct navigation
 
 ### Session Structure
 

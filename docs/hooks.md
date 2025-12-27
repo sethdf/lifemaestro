@@ -7,10 +7,23 @@ Hooks execute custom scripts at key points in Claude Code workflows.
 ### PreToolUse: Bash
 **File:** `.claude/hooks/pre-bash.sh`
 
-Validates commands before execution:
-- Blocks destructive patterns (`rm -rf /`, `mkfs`, etc.)
-- Asks confirmation for `--force` flags
-- Approves safe commands
+Comprehensive command validation with two tiers:
+
+**BLOCKED (no override):**
+- `rm -rf /`, `rm -rf ~` - catastrophic deletion
+- Fork bombs, disk overwrites
+- `mkfs`, `dd if=` to devices
+- Recursive permission changes on root
+
+**ASK (requires confirmation):**
+- File deletion (`rm -rf`, `rm -r`, wildcards)
+- Git destructive ops (`push --force`, `reset --hard`, `clean`, `branch -D`)
+- Database ops (`DROP`, `TRUNCATE`, `DELETE FROM`)
+- Email ops (`himalaya delete`, `mail.sh delete/move`)
+- Calendar ops (`gcalcli delete`, `thallo delete`)
+- System changes (`sudo`, `systemctl stop`, package removal)
+- Cloud deletions (AWS, GCP, Azure)
+- Any `--force`, `--hard`, `--delete`, `--purge` flags
 
 ### PostToolUse: Write
 **File:** `.claude/hooks/post-write.sh`
