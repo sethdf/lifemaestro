@@ -44,3 +44,14 @@ fi
 
 echo "zone: $default_zone"
 echo "source: default"
+
+# Warn user about fallback (only once per session via cache file)
+_warn_cache="$MAESTRO_RUNTIME/.zone-fallback-warned"
+if [[ ! -f "$_warn_cache" ]] || [[ $(find "$_warn_cache" -mmin +60 2>/dev/null) ]]; then
+    echo "" >&2
+    echo "⚠ No zone pattern matched current directory." >&2
+    echo "  Using default zone: $default_zone" >&2
+    echo "  Set MAESTRO_ZONE or add pattern to config.toml" >&2
+    mkdir -p "$(dirname "$_warn_cache")" 2>/dev/null
+    touch "$_warn_cache" 2>/dev/null
+fi

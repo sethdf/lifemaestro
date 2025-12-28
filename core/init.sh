@@ -22,6 +22,19 @@ MAESTRO_DATA="${MAESTRO_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/lifemaestro}"
 # Ensure directories exist
 mkdir -p "$MAESTRO_STATE" "$MAESTRO_RUNTIME" "$MAESTRO_DATA"
 
+# Auto-create config file on first run
+if [[ ! -f "$MAESTRO_CONFIG" ]]; then
+    # Check for default config in repo
+    _default_config="$MAESTRO_ROOT/config.toml"
+    if [[ -f "$_default_config" ]]; then
+        mkdir -p "$(dirname "$MAESTRO_CONFIG")"
+        cp "$_default_config" "$MAESTRO_CONFIG"
+        echo "Created config file: $MAESTRO_CONFIG" >&2
+        echo "Edit to customize your zones and settings." >&2
+    fi
+    unset _default_config
+fi
+
 # ============================================
 # LOAD CLI MODULE FIRST
 # ============================================

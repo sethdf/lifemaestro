@@ -541,9 +541,18 @@ keepalive::daemon() {
 }
 
 keepalive::start() {
-    if [[ -f "$KEEPALIVE_PID_FILE" ]] && kill -0 "$(cat "$KEEPALIVE_PID_FILE")" 2>/dev/null; then
-        echo "Daemon already running (PID $(cat "$KEEPALIVE_PID_FILE"))"
-        return 0
+    # Check for existing daemon
+    if [[ -f "$KEEPALIVE_PID_FILE" ]]; then
+        local old_pid
+        old_pid=$(cat "$KEEPALIVE_PID_FILE" 2>/dev/null)
+        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+            echo "Daemon already running (PID $old_pid)"
+            return 0
+        else
+            # Stale PID file - clean it up
+            echo "Cleaning up stale PID file (process $old_pid not running)"
+            rm -f "$KEEPALIVE_PID_FILE"
+        fi
     fi
 
     keepalive::daemon &

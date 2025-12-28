@@ -6,7 +6,17 @@
 set -euo pipefail
 
 MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
-TOOLS_DIR="$MAESTRO_ROOT/.claude/skills/zone-context/tools"
+SCRIPTS_DIR="$MAESTRO_ROOT/.claude/skills/zone-context/scripts"
+
+# Validate zone name (alphanumeric, dash, underscore only)
+validate_zone_name() {
+    local name="$1"
+    if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo "Error: Invalid zone name '$name'. Use only letters, numbers, dash, underscore." >&2
+        return 1
+    fi
+    return 0
+}
 
 source "$MAESTRO_ROOT/core/init.sh" 2>/dev/null || true
 maestro::init 2>/dev/null || true
@@ -20,18 +30,19 @@ shift || true
 
 case "$cmd" in
     current|c)
-        "$TOOLS_DIR/zone-detect.sh"
+        "$SCRIPTS_DIR/zone-detect.sh"
         ;;
     list|ls|l)
-        "$TOOLS_DIR/zone-list.sh"
+        "$SCRIPTS_DIR/zone-list.sh"
         ;;
     switch|s)
         if [[ $# -lt 1 ]]; then
             cli::die_usage "Usage: zone switch <zone-name>"
         fi
         zone_name="$1"
+        validate_zone_name "$zone_name" || exit 1
         # Output commands to eval
-        "$TOOLS_DIR/zone-switch.sh" "$zone_name"
+        "$SCRIPTS_DIR/zone-switch.sh" "$zone_name"
         echo ""
         echo "# To apply: eval \"\$(zone switch $zone_name)\""
         ;;
@@ -40,6 +51,7 @@ case "$cmd" in
             cli::die_usage "Usage: zone apply <zone-name>"
         fi
         zone_name="$1"
+        validate_zone_name "$zone_name" || exit 1
         # Check if we're being sourced or run as subcommand
         if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             # Running as script - can't modify parent shell
@@ -53,7 +65,7 @@ case "$cmd" in
             exit 1
         fi
         # Being sourced - can apply directly
-        eval "$("$TOOLS_DIR/zone-switch.sh" "$zone_name")"
+        eval "$("$SCRIPTS_DIR/zone-switch.sh" "$zone_name")"
         echo "Switched to zone: $zone_name"
         ;;
     version|-v|--version)
@@ -99,11 +111,12 @@ EOF
     *)
         # If argument looks like a zone name, treat as switch
         if [[ -n "$cmd" ]]; then
-            "$TOOLS_DIR/zone-switch.sh" "$cmd"
+            validate_zone_name "$cmd" || exit 1
+            "$SCRIPTS_DIR/zone-switch.sh" "$cmd"
             echo ""
             echo "# To apply: eval \"\$(zone switch $cmd)\""
         else
-            "$TOOLS_DIR/zone-detect.sh"
+            "$SCRIPTS_DIR/zone-detect.sh"
         fi
         ;;
 esac

@@ -16,7 +16,20 @@ utils::trim() {
 }
 
 utils::slugify() {
-    echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-_'
+    local input="$1"
+    local max_len="${2:-50}"  # Default max 50 chars
+
+    local slug
+    slug=$(echo "$input" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-_')
+
+    # Truncate if too long
+    if [[ ${#slug} -gt $max_len ]]; then
+        slug="${slug:0:$max_len}"
+        # Don't end with a dash
+        slug="${slug%-}"
+    fi
+
+    echo "$slug"
 }
 
 utils::timestamp() {

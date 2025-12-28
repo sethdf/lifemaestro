@@ -10,7 +10,13 @@ zone="${1:-}"
 if [[ -z "$zone" ]]; then
     echo "Usage: zone-switch.sh <zone-name>" >&2
     echo "Available zones:" >&2
-    "$MAESTRO_ROOT/.claude/skills/zone-context/tools/zone-list.sh" >&2
+    "$MAESTRO_ROOT/.claude/skills/zone-context/scripts/zone-list.sh" >&2
+    exit 1
+fi
+
+# Validate zone name (security: prevent injection)
+if [[ ! "$zone" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "Error: Invalid zone name. Use only letters, numbers, dash, underscore." >&2
     exit 1
 fi
 

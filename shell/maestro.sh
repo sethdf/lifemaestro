@@ -5,6 +5,16 @@
 
 MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
 
+# Validate zone name (alphanumeric, dash, underscore only)
+_maestro_validate_zone() {
+    local name="$1"
+    if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo "Error: Invalid zone name '$name'. Use only letters, numbers, dash, underscore." >&2
+        return 1
+    fi
+    return 0
+}
+
 # Zone apply - actually switches zone in current shell
 zone() {
     local cmd="${1:-current}"
@@ -17,8 +27,10 @@ zone() {
                 echo "Usage: zone apply <zone-name>" >&2
                 return 1
             fi
+            # Validate zone name before eval (security)
+            _maestro_validate_zone "$zone_name" || return 1
             # Eval the output directly in current shell
-            eval "$("$MAESTRO_ROOT/.claude/skills/zone-context/tools/zone-switch.sh" "$zone_name")"
+            eval "$("$MAESTRO_ROOT/.claude/skills/zone-context/scripts/zone-switch.sh" "$zone_name")"
             echo "Switched to zone: $zone_name"
             ;;
         *)

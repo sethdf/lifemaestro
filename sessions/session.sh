@@ -92,10 +92,35 @@ session::show_context() {
 # SESSION CREATION
 # ============================================
 
+# Validate session/type name to prevent path traversal
+session::validate_name() {
+    local name="$1"
+    local label="${2:-name}"
+
+    # Check for path traversal attempts
+    if [[ "$name" =~ \.\. ]] || [[ "$name" =~ ^/ ]] || [[ "$name" =~ ^~ ]]; then
+        cli::error "Invalid $label: '$name' contains path traversal characters"
+        return 1
+    fi
+
+    # Check for shell metacharacters
+    if [[ "$name" =~ [\;\|\&\$\`\(\)\{\}\<\>] ]]; then
+        cli::error "Invalid $label: '$name' contains shell metacharacters"
+        return 1
+    fi
+
+    return 0
+}
+
 session::create() {
     local type="$1"
     local name="$2"
     local zone="${3:-$(session::current_zone)}"
+
+    # Validate inputs to prevent path traversal
+    session::validate_name "$type" "type" || return 1
+    session::validate_name "$name" "session name" || return 1
+    session::validate_name "$zone" "zone" || return 1
 
     # Switch to zone
     session::switch "$zone"
@@ -123,8 +148,15 @@ session::create() {
             ;;
     esac
 
-    # Create directory
-    mkdir -p "$session_dir"
+    # Final safety check: ensure path is under SESSIONS_BASE
+    local resolved_base="${SESSIONS_BASE/#\~/$HOME}"
+    local resolved_dir
+    resolved_dir=$(mkdir -p "$session_dir" && cd "$session_dir" && pwd)
+    if [[ ! "$resolved_dir" =~ ^"$resolved_base" ]]; then
+        cli::error "Security: session directory escapes base path"
+        rm -rf "$session_dir" 2>/dev/null || true
+        return 1
+    fi
 
     # Initialize git if not exists
     if [[ ! -d "$session_dir/.git" ]]; then
@@ -238,13 +270,24 @@ session::create_ticket() {
     local ticket_details="$3"
     local zone="${4:-$(session::current_zone)}"
 
+    # Validate inputs to prevent path traversal
+    session::validate_name "$name" "session name" || return 1
+    session::validate_name "$zone" "zone" || return 1
+
     # Switch to zone
     session::switch "$zone"
 
     local session_dir="$SESSIONS_BASE/$zone/tickets/$name"
 
-    # Create directory
-    mkdir -p "$session_dir"
+    # Final safety check: ensure path is under SESSIONS_BASE
+    local resolved_base="${SESSIONS_BASE/#\~/$HOME}"
+    local resolved_dir
+    resolved_dir=$(mkdir -p "$session_dir" && cd "$session_dir" && pwd)
+    if [[ ! "$resolved_dir" =~ ^"$resolved_base" ]]; then
+        cli::error "Security: session directory escapes base path"
+        rm -rf "$session_dir" 2>/dev/null || true
+        return 1
+    fi
 
     # Initialize git if not exists
     if [[ ! -d "$session_dir/.git" ]]; then
