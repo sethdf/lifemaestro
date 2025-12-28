@@ -9,6 +9,10 @@
 # - Quiet mode
 # - Atomic file operations
 
+# Prevent double-sourcing
+[[ -n "${_MAESTRO_CLI_LOADED:-}" ]] && return 0
+_MAESTRO_CLI_LOADED=1
+
 # ============================================
 # VERSION
 # ============================================

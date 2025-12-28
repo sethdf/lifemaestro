@@ -6,19 +6,6 @@
 version = "0.2.0"
 
 # ============================================
-# ADAPTERS
-# ============================================
-# Order determines preference (first available is used)
-
-[adapters]
-ai = ["claude", "ollama", "llm"]
-mail = ["himalaya", "imap"]
-calendar = ["khal", "gcalcli"]
-tasks = ["taskwarrior", "todoist"]
-secrets = ["sops", "pass", "env"]
-search = ["notmuch", "grep"]
-
-# ============================================
 # ZONES (Flexible namespaces for any context)
 # ============================================
 # Zones replace hardcoded work/home. Define any zones you need.
@@ -127,58 +114,29 @@ default_code_provider = "claude"
 default_fast_provider = "ollama"
 
 [ai.claude]
-enabled = true
 # Auth: ANTHROPIC_API_KEY env var or AWS Bedrock
 
 [ai.openai]
-enabled = true
 default_model = "gpt-4o"
 # Auth: OPENAI_API_KEY env var
 
 [ai.ollama]
-enabled = true
 default_model = "llama3.2"
 embed_model = "nomic-embed-text"
 auto_start = true
 
-[ai.amazon-q]
-enabled = false
-# Auth: AWS SSO
-
-[ai.gh-copilot]
-enabled = false
-# Auth: gh auth login
-
 [ai.aider]
-enabled = true
 backend = "anthropic"  # or "openai", "ollama", "bedrock"
 
 [ai.llm]
-enabled = true
 # Simon Willison's llm tool
 
-[ai.gemini]
-enabled = false
-# Auth: GEMINI_API_KEY env var
-
-[ai.mistral]
-enabled = false
-# Auth: MISTRAL_API_KEY env var
-
-[ai.groq]
-enabled = false
-# Auth: GROQ_API_KEY env var
-
-# Consumer accounts (browser sessions)
-[ai.claude-web]
-enabled = false
-browser = "chrome"
-profile = "Default"
-
-[ai.chatgpt]
-enabled = false
-browser = "chrome"
-profile = "Default"
+# Add more providers as needed:
+# [ai.gemini]      # GEMINI_API_KEY
+# [ai.mistral]     # MISTRAL_API_KEY
+# [ai.groq]        # GROQ_API_KEY
+# [ai.amazon-q]    # AWS SSO
+# [ai.gh-copilot]  # gh auth login
 
 # ============================================
 # MAIL ACCOUNTS

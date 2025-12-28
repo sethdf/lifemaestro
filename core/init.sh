@@ -101,78 +101,6 @@ maestro::config_array() {
 }
 
 # ============================================
-# ADAPTER LOADING
-# ============================================
-
-declare -A MAESTRO_ADAPTERS
-
-maestro::load_adapter() {
-    local module="$1"
-    local adapters
-
-    # Get configured adapters for this module
-    mapfile -t adapters < <(maestro::config_array "adapters.$module")
-
-    # If none configured, use defaults
-    if [[ ${#adapters[@]} -eq 0 ]]; then
-        case "$module" in
-            ai)      adapters=(claude ollama) ;;
-            mail)    adapters=(himalaya imap) ;;
-            secrets) adapters=(sops pass env) ;;
-            search)  adapters=(notmuch grep) ;;
-        esac
-    fi
-
-    # Try each adapter in order
-    for adapter in "${adapters[@]}"; do
-        local adapter_file="$MAESTRO_ROOT/adapters/$module/$adapter.sh"
-
-        if [[ -f "$adapter_file" ]] && maestro::adapter_available "$module" "$adapter"; then
-            source "$adapter_file"
-            MAESTRO_ADAPTERS[$module]="$adapter"
-            maestro::log "Loaded adapter: $module/$adapter"
-            return 0
-        fi
-    done
-
-    maestro::log "WARNING: No adapter found for $module"
-    return 1
-}
-
-maestro::adapter_available() {
-    local module="$1"
-    local adapter="$2"
-
-    case "$module/$adapter" in
-        # AI adapters
-        ai/claude)      command -v claude &>/dev/null ;;
-        ai/ollama)      command -v ollama &>/dev/null && curl -s --max-time 1 localhost:11434 &>/dev/null ;;
-        ai/openai)      [[ -n "${OPENAI_API_KEY:-}" ]] ;;
-        ai/llm)         command -v llm &>/dev/null ;;
-        ai/aider)       command -v aider &>/dev/null ;;
-
-        # Mail adapters
-        mail/himalaya)  command -v himalaya &>/dev/null ;;
-        mail/neomutt)   command -v neomutt &>/dev/null ;;
-        mail/imap)      command -v curl &>/dev/null ;;
-
-        # Secrets adapters
-        secrets/sops)   command -v sops &>/dev/null ;;
-        secrets/pass)   command -v pass &>/dev/null ;;
-        secrets/1password) command -v op &>/dev/null ;;
-        secrets/env)    return 0 ;;  # Always available
-
-        # Search adapters
-        search/notmuch) command -v notmuch &>/dev/null ;;
-        search/mu)      command -v mu &>/dev/null ;;
-        search/grep)    return 0 ;;  # Always available
-
-        # Unknown - assume available
-        *) return 0 ;;
-    esac
-}
-
-# ============================================
 # INITIALIZATION
 # ============================================
 
@@ -180,14 +108,6 @@ maestro::init() {
     # Source core modules
     source "$MAESTRO_ROOT/core/utils.sh"
     source "$MAESTRO_ROOT/core/interfaces.sh"
-
-    # Load adapters
-    maestro::load_adapter "secrets"  # Load first - others may need it
-    maestro::load_adapter "ai"
-
-    # Load optional modules
-    [[ -f "$MAESTRO_ROOT/adapters/mail/${MAESTRO_ADAPTERS[mail]:-}.sh" ]] && maestro::load_adapter "mail"
-    [[ -f "$MAESTRO_ROOT/adapters/search/${MAESTRO_ADAPTERS[search]:-}.sh" ]] && maestro::load_adapter "search"
 
     # Load keepalive
     if [[ -f "$MAESTRO_ROOT/core/keepalive.sh" ]]; then
@@ -259,11 +179,152 @@ maestro::status() {
     echo "Root:    $MAESTRO_ROOT"
     echo "Config:  $MAESTRO_CONFIG"
     echo "State:   $MAESTRO_STATE"
+    echo "Version: $MAESTRO_VERSION"
+}
+
+# ============================================
+# DOCTOR (Health Check)
+# ============================================
+
+maestro::doctor() {
+    local errors=0
+    local warnings=0
+
+    echo "LifeMaestro Health Check"
+    echo "========================"
     echo ""
-    echo "Loaded Adapters:"
-    for module in "${!MAESTRO_ADAPTERS[@]}"; do
-        echo "  $module: ${MAESTRO_ADAPTERS[$module]}"
+
+    # Check required dependencies
+    echo "Dependencies:"
+    local required_deps=(jq curl git)
+    local optional_deps=(dasel fzf gh yq)
+
+    for dep in "${required_deps[@]}"; do
+        if command -v "$dep" &>/dev/null; then
+            echo "  ✓ $dep"
+        else
+            echo "  ✗ $dep (REQUIRED)"
+            ((errors++)) || true
+        fi
     done
+
+    for dep in "${optional_deps[@]}"; do
+        if command -v "$dep" &>/dev/null; then
+            echo "  ✓ $dep"
+        else
+            echo "  ○ $dep (optional)"
+            ((warnings++)) || true
+        fi
+    done
+    echo ""
+
+    # Check config file
+    echo "Configuration:"
+    if [[ -f "$MAESTRO_CONFIG" ]]; then
+        echo "  ✓ Config file: $MAESTRO_CONFIG"
+
+        # Validate TOML syntax
+        if command -v dasel &>/dev/null; then
+            if dasel -f "$MAESTRO_CONFIG" -r toml "maestro.version" &>/dev/null; then
+                echo "  ✓ Config syntax valid"
+            else
+                echo "  ✗ Config syntax invalid"
+                ((errors++)) || true
+            fi
+        else
+            echo "  ○ Config syntax (install dasel to validate)"
+        fi
+    else
+        echo "  ✗ Config file not found: $MAESTRO_CONFIG"
+        echo "    Fix: cp $MAESTRO_ROOT/config.toml $MAESTRO_CONFIG"
+        ((errors++)) || true
+    fi
+    echo ""
+
+    # Check zones
+    echo "Zones:"
+    if command -v dasel &>/dev/null && [[ -f "$MAESTRO_CONFIG" ]]; then
+        local zones
+        zones=$(dasel -f "$MAESTRO_CONFIG" -r toml -m 'zones.-' 2>/dev/null | grep -v '^default$\|^detection$' | head -5)
+        if [[ -n "$zones" ]]; then
+            while IFS= read -r zone; do
+                local git_user
+                git_user=$(dasel -f "$MAESTRO_CONFIG" -r toml "zones.$zone.git.user" 2>/dev/null || echo "")
+                if [[ -n "$git_user" ]]; then
+                    echo "  ✓ $zone (git: $git_user)"
+                else
+                    echo "  ○ $zone (no git identity configured)"
+                    ((warnings++)) || true
+                fi
+            done <<< "$zones"
+        else
+            echo "  ✗ No zones configured"
+            echo "    Fix: Add [zones.personal] section to config.toml"
+            ((errors++)) || true
+        fi
+    else
+        echo "  ○ Cannot check zones (dasel not installed)"
+    fi
+    echo ""
+
+    # Check git
+    echo "Git:"
+    if git config user.name &>/dev/null; then
+        echo "  ✓ Global user: $(git config user.name)"
+    else
+        echo "  ○ No global git user (will use zone-specific)"
+    fi
+    if git config user.email &>/dev/null; then
+        echo "  ✓ Global email: $(git config user.email)"
+    else
+        echo "  ○ No global git email (will use zone-specific)"
+    fi
+    echo ""
+
+    # Check sessions directory
+    echo "Sessions:"
+    local sessions_base="${SESSIONS_BASE:-$HOME/ai-sessions}"
+    sessions_base="${sessions_base/#\~/$HOME}"
+    if [[ -d "$sessions_base" ]]; then
+        local session_count
+        session_count=$(find "$sessions_base" -maxdepth 3 -type d -name ".git" 2>/dev/null | wc -l)
+        echo "  ✓ Sessions directory: $sessions_base ($session_count sessions)"
+    else
+        echo "  ○ Sessions directory not created yet: $sessions_base"
+        echo "    (Will be created on first 'session new')"
+    fi
+    echo ""
+
+    # Check API keys (optional)
+    echo "API Keys (optional):"
+    local api_keys=(ANTHROPIC_API_KEY OPENAI_API_KEY SDP_API_KEY JIRA_API_TOKEN LINEAR_API_KEY GITHUB_TOKEN)
+    local has_any_key=false
+    for key in "${api_keys[@]}"; do
+        if [[ -n "${!key:-}" ]]; then
+            echo "  ✓ $key (set)"
+            has_any_key=true
+        fi
+    done
+    if [[ "$has_any_key" == "false" ]]; then
+        echo "  ○ No API keys configured (set as needed)"
+    fi
+    echo ""
+
+    # Summary
+    echo "─────────────────────────"
+    if [[ $errors -eq 0 ]]; then
+        if [[ $warnings -eq 0 ]]; then
+            echo "✓ All checks passed!"
+        else
+            echo "✓ Ready to use ($warnings optional items)"
+        fi
+        return 0
+    else
+        echo "✗ $errors error(s), $warnings warning(s)"
+        echo ""
+        echo "Run 'maestro doctor' again after fixing errors."
+        return 1
+    fi
 }
 
 # Auto-init if sourced directly

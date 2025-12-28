@@ -32,12 +32,21 @@ fi
 
 # Check for API key
 if [[ -z "${SDP_API_KEY:-}" ]]; then
-    echo "Error: SDP_API_KEY environment variable not set" >&2
+    echo "Error: Authentication failed - SDP_API_KEY not set" >&2
+    echo "" >&2
+    echo "Fix: Set your ServiceDesk Plus API token:" >&2
+    echo "  export SDP_API_KEY='your-oauth-token'" >&2
+    echo "" >&2
+    echo "Get token from: ServiceDesk Plus > Admin > API > OAuth Tokens" >&2
     exit 1
 fi
 
 if [[ -z "${SDP_BASE_URL:-}" ]]; then
-    echo "Error: SDP base URL not configured for zone '$zone'" >&2
+    echo "Error: SDP not configured for zone '$zone'" >&2
+    echo "" >&2
+    echo "Fix: Add to config.toml:" >&2
+    echo "  [zones.$zone.sdp]" >&2
+    echo "  base_url = \"https://your-sdp-instance.com/api/v3\"" >&2
     exit 1
 fi
 
@@ -52,7 +61,14 @@ if echo "$response" | jq -e '.response_status.status_code' &>/dev/null; then
     status=$(echo "$response" | jq -r '.response_status.status_code')
     if [[ "$status" != "2000" ]]; then
         message=$(echo "$response" | jq -r '.response_status.messages[0].message // "Unknown error"')
-        echo "Error: $message" >&2
+        echo "Error: API request failed ($status)" >&2
+        echo "" >&2
+        case "$status" in
+            4000) echo "Ticket not found: SDP-$ticket_num" >&2 ;;
+            4001) echo "Authentication failed - check SDP_API_KEY is valid" >&2 ;;
+            4003) echo "Permission denied - your token may lack read access" >&2 ;;
+            *)    echo "Message: $message" >&2 ;;
+        esac
         exit 1
     fi
 fi

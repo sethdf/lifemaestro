@@ -20,6 +20,9 @@ case "$cmd" in
     status|s)
         maestro::status
         ;;
+    doctor|d)
+        maestro::doctor
+        ;;
     init)
         maestro::init
         cli::success "LifeMaestro initialized"
@@ -49,6 +52,7 @@ case "$cmd" in
         cli::out ""
         cli::out "Commands:"
         cli::out "    status      Show system status"
+        cli::out "    doctor      Run health check (verify setup)"
         cli::out "    init        Initialize/reload LifeMaestro"
         cli::out "    config      Edit configuration"
         cli::out "    logs        View logs"

@@ -30,12 +30,22 @@ fi
 
 # Check for credentials
 if [[ -z "${JIRA_EMAIL:-}" ]] || [[ -z "${JIRA_API_TOKEN:-}" ]]; then
-    echo "Error: JIRA_EMAIL and JIRA_API_TOKEN environment variables required" >&2
+    echo "Error: Authentication failed - Jira credentials not set" >&2
+    echo "" >&2
+    echo "Fix: Set your Jira credentials:" >&2
+    echo "  export JIRA_EMAIL='your-email@company.com'" >&2
+    echo "  export JIRA_API_TOKEN='your-api-token'" >&2
+    echo "" >&2
+    echo "Get token from: https://id.atlassian.com/manage-profile/security/api-tokens" >&2
     exit 1
 fi
 
 if [[ -z "${JIRA_BASE_URL:-}" ]]; then
-    echo "Error: Jira base URL not configured for zone '$zone'" >&2
+    echo "Error: Jira not configured for zone '$zone'" >&2
+    echo "" >&2
+    echo "Fix: Add to config.toml:" >&2
+    echo "  [zones.$zone.jira]" >&2
+    echo "  base_url = \"https://your-company.atlassian.net\"" >&2
     exit 1
 fi
 

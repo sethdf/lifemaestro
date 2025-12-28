@@ -66,20 +66,40 @@ utils::json_array() {
 
 utils::require_command() {
     local cmd="$1"
-    local msg="${2:-Command '$cmd' is required but not installed}"
+    local install_hint="${2:-}"
 
     if ! command -v "$cmd" &>/dev/null; then
-        echo "ERROR: $msg" >&2
+        echo "Error: Required command '$cmd' not found" >&2
+        echo "" >&2
+        if [[ -n "$install_hint" ]]; then
+            echo "Install: $install_hint" >&2
+        else
+            # Provide common install hints
+            case "$cmd" in
+                dasel)  echo "Install: go install github.com/TomWright/dasel/v2/cmd/dasel@master" >&2 ;;
+                jq)     echo "Install: sudo apt install jq  OR  brew install jq" >&2 ;;
+                fzf)    echo "Install: sudo apt install fzf  OR  brew install fzf" >&2 ;;
+                gh)     echo "Install: sudo apt install gh  OR  brew install gh" >&2 ;;
+                yq)     echo "Install: go install github.com/mikefarah/yq/v4@latest" >&2 ;;
+                *)      echo "Install: Check your package manager for '$cmd'" >&2 ;;
+            esac
+        fi
         return 1
     fi
 }
 
 utils::require_env() {
     local var="$1"
-    local msg="${2:-Environment variable '$var' is required but not set}"
+    local hint="${2:-}"
 
     if [[ -z "${!var:-}" ]]; then
-        echo "ERROR: $msg" >&2
+        echo "Error: Environment variable '$var' not set" >&2
+        echo "" >&2
+        if [[ -n "$hint" ]]; then
+            echo "Fix: $hint" >&2
+        else
+            echo "Fix: export $var='your-value'" >&2
+        fi
         return 1
     fi
 }

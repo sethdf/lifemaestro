@@ -35,8 +35,8 @@ case "$cmd" in
         session::create "$type" "$name"
         ;;
     ticket|t)
-        if [[ $# -lt 2 ]]; then
-            cli::die_usage "Usage: session ticket <number> <description>"
+        if [[ $# -lt 1 ]]; then
+            cli::die_usage "Usage: session ticket <ticket-ref> [description]"
         fi
         session::ticket "$@"
         ;;
@@ -125,7 +125,7 @@ case "$cmd" in
         cli::out ""
         cli::out "Create sessions:"
         cli::out "    new <type> <name>    Create new session"
-        cli::out "    ticket <num> <desc>  Create work ticket session"
+        cli::out "    ticket <ref> [desc]  Create ticket session (auto-fetches details)"
         cli::out "    work <name>          Create work exploration"
         cli::out "    home <name>          Create home exploration"
         cli::out "    infra <name>         Create infrastructure session"

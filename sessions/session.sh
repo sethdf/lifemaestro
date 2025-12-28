@@ -188,10 +188,112 @@ session::get_rules() {
 # ============================================
 
 session::ticket() {
-    local num="$1"
-    local desc="$2"
+    local ticket_ref="$1"
+    local desc="${2:-}"
     local zone="${3:-$(session::current_zone)}"
-    session::create "ticket" "$num-$(utils::slugify "$desc")" "$zone"
+
+    # Auto-fetch ticket details
+    local ticket_details=""
+    local ticket_title=""
+    local tools_dir="$MAESTRO_ROOT/.claude/skills/ticket-lookup/tools"
+
+    cli::info "Fetching ticket details for: $ticket_ref"
+
+    # Auto-detect ticket type and fetch
+    if [[ "$ticket_ref" =~ ^SDP-?([0-9]+)$ ]] || [[ "$ticket_ref" =~ ^[0-9]+$ ]]; then
+        ticket_details=$("$tools_dir/sdp-fetch.sh" "$ticket_ref" 2>/dev/null) || true
+    elif [[ "$ticket_ref" =~ ^[A-Z]+-[0-9]+$ ]]; then
+        ticket_details=$("$tools_dir/jira-fetch.sh" "$ticket_ref" 2>/dev/null) || true
+    elif [[ "$ticket_ref" =~ ^LIN- ]] || [[ "$ticket_ref" =~ linear\.app ]]; then
+        ticket_details=$("$tools_dir/linear-fetch.sh" "$ticket_ref" 2>/dev/null) || true
+    elif [[ "$ticket_ref" =~ ^#?[0-9]+$ ]] || [[ "$ticket_ref" =~ github\.com ]] || [[ "$ticket_ref" =~ / ]]; then
+        ticket_details=$("$tools_dir/github-fetch.sh" "$ticket_ref" 2>/dev/null) || true
+    fi
+
+    # Extract title from fetched details for session name
+    if [[ -n "$ticket_details" ]]; then
+        ticket_title=$(echo "$ticket_details" | grep "^title:" | cut -d: -f2- | xargs)
+        cli::success "Fetched: $ticket_title"
+    else
+        cli::warn "Could not fetch ticket details (will create session anyway)"
+    fi
+
+    # Use provided description, or ticket title, or ticket ref
+    local session_name
+    if [[ -n "$desc" ]]; then
+        session_name="$ticket_ref-$(utils::slugify "$desc")"
+    elif [[ -n "$ticket_title" ]]; then
+        session_name="$ticket_ref-$(utils::slugify "$ticket_title")"
+    else
+        session_name="$ticket_ref"
+    fi
+
+    # Create the session with ticket context
+    session::create_ticket "$session_name" "$ticket_ref" "$ticket_details" "$zone"
+}
+
+session::create_ticket() {
+    local name="$1"
+    local ticket_ref="$2"
+    local ticket_details="$3"
+    local zone="${4:-$(session::current_zone)}"
+
+    # Switch to zone
+    session::switch "$zone"
+
+    local session_dir="$SESSIONS_BASE/$zone/tickets/$name"
+
+    # Create directory
+    mkdir -p "$session_dir"
+
+    # Initialize git if not exists
+    if [[ ! -d "$session_dir/.git" ]]; then
+        git -C "$session_dir" init
+    fi
+
+    # Create CLAUDE.md with ticket context
+    local template="$MAESTRO_ROOT/sessions/templates/ticket.md"
+    if [[ -f "$template" ]] && [[ ! -f "$session_dir/CLAUDE.md" ]]; then
+        local session_date=$(date '+%Y-%m-%d')
+        local engineer=$(maestro::config "zones.$zone.git.user" "$USER")
+        local rules=$(session::get_rules "$zone")
+
+        # Format ticket details for markdown
+        local formatted_details=""
+        if [[ -n "$ticket_details" ]]; then
+            formatted_details=$(echo "$ticket_details" | sed 's/^/> /')
+        else
+            formatted_details="_(Ticket details could not be fetched automatically)_"
+        fi
+
+        sed -e "s/{{NAME}}/$name/g" \
+            -e "s/{{DATE}}/$session_date/g" \
+            -e "s/{{CC_CONTEXT}}/$zone/g" \
+            -e "s/{{CC_ENGINEER}}/$engineer/g" \
+            -e "s/{{TICKET_NUM}}/$ticket_ref/g" \
+            -e "s/{{OBJECTIVE}}/[Describe your objective]/g" \
+            "$template" > "$session_dir/CLAUDE.md"
+
+        # Replace ticket details (multiline, can't use sed)
+        local tmp_file=$(mktemp)
+        awk -v details="$formatted_details" '{gsub(/\{\{TICKET_DETAILS\}\}/, details); print}' \
+            "$session_dir/CLAUDE.md" > "$tmp_file" && mv "$tmp_file" "$session_dir/CLAUDE.md"
+
+        # Append rules
+        if [[ -n "$rules" ]]; then
+            sed -i "s|{{RULES}}|$rules|g" "$session_dir/CLAUDE.md" 2>/dev/null || \
+                echo "$rules" >> "$session_dir/CLAUDE.md"
+        else
+            sed -i "s/{{RULES}}//g" "$session_dir/CLAUDE.md" 2>/dev/null || true
+        fi
+    fi
+
+    # Navigate to session
+    cd "$session_dir"
+
+    utils::success "Created ticket session: $session_dir"
+    echo ""
+    echo "Session ready with ticket context. Run 'ai' to start."
 }
 
 session::explore() {
