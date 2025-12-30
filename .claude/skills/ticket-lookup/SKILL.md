@@ -17,6 +17,7 @@ Fetches ticket details from various issue tracking systems based on the current 
 - enable_jira: true
 - enable_linear: true
 - enable_github_issues: true
+- enable_azure_devops: true
 - auto_detect_ticket_type: true
 
 ## Instructions
@@ -29,6 +30,7 @@ When user mentions a ticket:
 2. Check which ticket features are enabled for the zone
 3. Parse the ticket reference to determine type:
    - `SDP-12345` or just `12345` in SDP-enabled zone -> ServiceDesk Plus
+   - `ADO-12345` or work item ID in Azure DevOps zone -> Azure DevOps
    - `PROJ-123` pattern -> Jira
    - `LIN-abc123` or Linear URL -> Linear
    - `#123` or `owner/repo#123` -> GitHub Issues
@@ -38,6 +40,10 @@ When user mentions a ticket:
 If ticket is SDP type AND zone has `features.sdp = true`:
 - Read references/sdp-lookup.md for API details
 - Run `scripts/sdp-fetch.sh <ticket-number>`
+
+If ticket is Azure DevOps type AND zone has `features.azure_devops = true`:
+- Read references/azuredevops-lookup.md for API details
+- Run `scripts/azuredevops-fetch.sh <work-item-id>`
 
 If ticket is Jira type AND zone has `features.jira = true`:
 - Read references/jira-lookup.md for API details
