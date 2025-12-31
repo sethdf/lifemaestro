@@ -146,39 +146,35 @@ A skill should only contain essential files. Do NOT create:
 
 The skill is for an AI agent, not human documentation.
 
-## Skill Creation Process (Official)
+## Skill Creation Process (Official Anthropic 6 Steps)
 
-1. **Understand** - Gather concrete examples of usage
-2. **Plan** - Identify reusable scripts, references, assets
-3. **Initialize** - Create directory structure
+1. **Understand** - Gather concrete examples of how the skill will be used
+2. **Plan** - Identify reusable scripts, references, assets needed
+3. **Initialize** - Run `init_skill.py` to create directory structure
 4. **Edit** - Implement resources and write SKILL.md
-5. **Test** - Verify scripts work, skill triggers correctly
+5. **Package** - Run `package_skill.py` to validate and bundle
 6. **Iterate** - Improve based on real usage
 
-## LifeMaestro Extensions
+## Skill Validation
 
-LifeMaestro adds these patterns on top of official specs:
+Before considering a skill complete, validate it:
 
-### Variables Section
-```markdown
-## Variables
-- enable_feature_x: true
-- default_format: json
-```
-
-### Shared Tools Pattern
-CLI and agent share the same scripts:
-```
-CLI: skill run fetch-data 123
-        │
-        └──▶ scripts/fetch.sh ◀──┐
-                                  │
-Agent: "fetch data for 123"      │
-        │                        │
-        └──▶ SKILL.md → refs ────┘
-```
-
-### Quick Scaffold
 ```bash
-skill new my-skill --description "Does X" --trigger "user asks for X"
+# Quick Python validation
+scripts/quick_validate.py path/to/skill
+
+# Detailed bash validation
+scripts/validate-skill.sh path/to/skill
+
+# Package for distribution
+scripts/package_skill.py path/to/skill
 ```
+
+### What Validation Checks
+
+- SKILL.md exists with valid frontmatter
+- `name` field: lowercase, hyphens, max 64 chars, matches directory
+- `description` field: 50-1024 chars, contains trigger info
+- Body under 500 lines
+- All referenced files exist
+- No prohibited files (README.md, CHANGELOG.md, etc.)

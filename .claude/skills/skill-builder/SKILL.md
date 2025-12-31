@@ -1,73 +1,131 @@
 ---
 name: skill-builder
 description: |
-  Build new skills following official Anthropic patterns. Use when user wants to
-  create, design, scaffold, or improve a skill. Triggers: create skill, new skill,
-  build skill, scaffold skill, improve skill, skill design.
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Glob
+  Create and validate skills following the official Anthropic/agentskills.io specification.
+  Use when user wants to create a new skill, build a skill, scaffold a skill, validate
+  a skill, package a skill, or improve an existing skill. Triggers: create skill, new skill,
+  build skill, scaffold skill, validate skill, package skill, improve skill, skill design.
 ---
 
 # Skill Builder
 
-Meta-skill for creating skills following official Anthropic specifications (github.com/anthropics/skills).
+Create skills following the official Anthropic specification (agentskills.io).
 
-## Variables
-- enabled: true
-- auto_scaffold: true
+## The 6-Step Process
 
-## Purpose
-Help design and create new skills that follow official Anthropic patterns:
-- Progressive disclosure (SKILL.md → references → scripts)
-- Token-efficient architecture (description triggers, body routes)
-- Official structure: scripts/, references/, assets/
+Follow these steps in order. Skip only when there's a clear reason.
 
-## Instructions
+### Step 1: Understand
 
-### When user wants to CREATE a new skill:
+Gather concrete examples of how the skill will be used.
 
-1. **Gather requirements:**
-   - What problem does this skill solve?
-   - What are the trigger phrases? (crucial for description)
-   - What scripts/references/assets are needed?
+**Questions to ask:**
+- "What problem does this skill solve?"
+- "Can you give examples of how it would be used?"
+- "What would a user say that should trigger this skill?"
+- "What functionality should it support?"
 
-2. **Read the design guide:**
-   - Read `references/skill-design.md` for official Anthropic patterns
+**Exit criteria:** Clear understanding of the skill's purpose and triggers.
 
-3. **Design the skill:**
-   - Plan: scripts/ (executable), references/ (docs), assets/ (templates)
-   - Write description with ALL trigger information
-   - Keep SKILL.md body concise (<500 lines)
+### Step 2: Plan
 
-4. **Scaffold the skill:**
-   - Run `scripts/scaffold-skill.sh <name> [options]`
-   - Creates official directory structure
+Analyze examples to identify reusable resources:
 
-5. **Implement:**
-   - Edit SKILL.md - focus on clear description and instructions
-   - Implement scripts/ - test that they work standalone
-   - Write references/ - detailed docs loaded on demand
+| Resource | Purpose | Example |
+|----------|---------|---------|
+| `scripts/` | Deterministic, repeatable code | `rotate_pdf.py` |
+| `references/` | Documentation loaded on demand | `api_schema.md` |
+| `assets/` | Files used in output | `template.html` |
 
-### When user wants to IMPROVE an existing skill:
+**Questions:** What code gets rewritten repeatedly? What docs would help? What templates are needed?
 
-1. Read the current skill files
-2. Check against `references/skill-design.md` principles
-3. For workflow issues: see `references/workflows.md`
-4. For output issues: see `references/output-patterns.md`
-5. For common patterns: see `references/skill-patterns.md`
+### Step 3: Initialize
 
-### Key Official Principles:
+Create the skill structure:
 
-- **Concise is key** - Context window is shared, only add what Claude doesn't know
-- **Description is crucial** - It's the ONLY thing that triggers the skill
-- **Progressive disclosure** - SKILL.md routes to references, don't dump everything
+```bash
+scripts/init_skill.py <skill-name> --path <output-directory>
+```
+
+Creates:
+- `SKILL.md` template with frontmatter
+- Example `scripts/`, `references/`, `assets/` directories
+
+Skip if skill already exists and you're iterating.
+
+### Step 4: Edit
+
+Implement the skill resources and write SKILL.md.
+
+**For patterns and guidance:**
+- Multi-step processes: See `references/workflows.md`
+- Output formats: See `references/output-patterns.md`
+- Design principles: See `references/skill-design.md`
+
+**SKILL.md requirements:**
+- `name`: lowercase, hyphens, max 64 chars, matches directory
+- `description`: 50-1024 chars, include ALL trigger information
+- Body: under 500 lines, route to references for details
+
+**Test scripts:** Run them to verify they work standalone.
+
+### Step 5: Package
+
+Validate and bundle the skill:
+
+```bash
+# Quick validation
+scripts/quick_validate.py <path/to/skill>
+
+# Full validation (bash, more detailed)
+scripts/validate-skill.sh <path/to/skill>
+
+# Package for distribution
+scripts/package_skill.py <path/to/skill> [output-dir]
+```
+
+Validation checks:
+- Frontmatter format and required fields
+- Naming conventions
+- Description quality
+- File organization
+- Referenced files exist
+
+Fix any errors before considering the skill complete.
+
+### Step 6: Iterate
+
+Improve based on real usage:
+
+1. Use the skill on real tasks
+2. Notice struggles or inefficiencies
+3. Identify needed updates to SKILL.md or resources
+4. Implement changes
+5. Re-validate and test
+
+## Quick Reference
+
+**Create new skill:**
+```bash
+scripts/init_skill.py my-skill --path .claude/skills/
+# Edit files
+scripts/validate-skill.sh .claude/skills/my-skill
+```
+
+**Validate existing skill:**
+```bash
+scripts/validate-skill.sh path/to/skill
+```
+
+**Key principles:**
+- Description triggers the skill - put ALL trigger info there
+- Body only loads after triggering - "When to use" sections in body are useless
+- Concise is key - only add what Claude doesn't already know
+- Progressive disclosure - route to references, don't dump everything
 
 ## Examples
 
-- "Create a skill for fetching weather" → Design + scaffold weather skill
-- "Build a code review skill" → Design + scaffold code-review skill
-- "Help me improve the ticket-lookup skill" → Analyze and suggest improvements
-- "What's wrong with this skill?" → Review against best practices
+- "Create a skill for weather lookups" → Steps 1-5, create weather-lookup skill
+- "Validate the ticket-lookup skill" → Run validate-skill.sh, report issues
+- "The session skill isn't triggering" → Check description for missing triggers
+- "Package the email skill" → Run package_skill.py
