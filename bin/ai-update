@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# ai-update - Update all AI CLI tools
+# Usage: ai-update [--check]
+
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+DIM='\033[2m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+log_info()  { echo -e "${BLUE}▶${NC} $*"; }
+log_ok()    { echo -e "${GREEN}✓${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}!${NC} $*"; }
+log_error() { echo -e "${RED}✗${NC} $*" >&2; }
+
+# AI CLI tools configuration
+declare -A TOOLS=(
+    [claude]="@anthropic-ai/claude-code:npm"
+    [gemini]="@google/gemini-cli:npm"
+    [codex]="@openai/codex:npm"
+    [aider]="aider-chat:pip"
+)
+
+usage() {
+    cat <<EOF
+ai-update - Update all AI CLI tools
+
+Usage: ai-update [options]
+
+Options:
+    --check         Check for updates without installing
+    --tool <name>   Update specific tool only (claude, gemini, codex, aider)
+    -h, --help      Show this help
+
+Tools managed:
+    claude    Claude Code (@anthropic-ai/claude-code)
+    gemini    Gemini CLI (@google/gemini-cli)
+    codex     Codex CLI (@openai/codex)
+    aider     Aider (aider-chat)
+
+Examples:
+    ai-update              # Update all tools
+    ai-update --check      # Check versions only
+    ai-update --tool claude # Update only Claude Code
+EOF
+}
+
+get_version() {
+    local tool="$1"
+    case "$tool" in
+        claude) claude --version 2>/dev/null | head -1 || echo "not installed" ;;
+        gemini) gemini --version 2>/dev/null | head -1 || echo "not installed" ;;
+        codex)  codex --version 2>/dev/null | head -1 || echo "not installed" ;;
+        aider)  aider --version 2>/dev/null | head -1 || echo "not installed" ;;
+    esac
+}
+
+update_npm_tool() {
+    local cmd="$1"
+    local pkg="$2"
+
+    if ! command -v "$cmd" &>/dev/null; then
+        log_warn "$cmd not installed, installing..."
+    fi
+
+    if command -v bun &>/dev/null; then
+        bun install -g "$pkg" 2>&1
+    elif command -v npm &>/dev/null; then
+        npm install -g "$pkg" 2>&1
+    else
+        log_error "npm/bun not available"
+        return 1
+    fi
+}
+
+update_pip_tool() {
+    local pkg="$1"
+
+    if command -v pipx &>/dev/null; then
+        pipx upgrade "$pkg" 2>&1 || pipx install "$pkg" 2>&1
+    elif command -v pip &>/dev/null; then
+        pip install --upgrade --user "$pkg" 2>&1
+    else
+        log_error "pip/pipx not available"
+        return 1
+    fi
+}
+
+update_tool() {
+    local tool="$1"
+    local spec="${TOOLS[$tool]}"
+    local pkg="${spec%:*}"
+    local type="${spec#*:}"
+
+    log_info "Updating $tool..."
+    local before=$(get_version "$tool")
+
+    case "$type" in
+        npm)
+            if update_npm_tool "$tool" "$pkg"; then
+                log_ok "$tool updated"
+            else
+                log_error "$tool update failed"
+                return 1
+            fi
+            ;;
+        pip)
+            if update_pip_tool "$pkg"; then
+                log_ok "$tool updated"
+            else
+                log_error "$tool update failed"
+                return 1
+            fi
+            ;;
+    esac
+
+    local after=$(get_version "$tool")
+    if [[ "$before" != "$after" ]]; then
+        echo -e "  ${DIM}$before → $after${NC}"
+    fi
+}
+
+cmd_check() {
+    echo -e "${BOLD}AI CLI Tool Versions${NC}"
+    echo ""
+    
+    for tool in claude gemini codex aider; do
+        local version=$(get_version "$tool")
+        if [[ "$version" == "not installed" ]]; then
+            echo -e "  ${RED}✗${NC} $tool: not installed"
+        else
+            echo -e "  ${GREEN}✓${NC} $tool: $version"
+        fi
+    done
+    
+    echo ""
+    echo -e "${DIM}Run 'ai-update' to update all tools${NC}"
+}
+
+cmd_update_all() {
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}  Updating AI CLI Tools${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    local failed=0
+    for tool in claude gemini codex aider; do
+        update_tool "$tool" || ((failed++))
+        echo ""
+    done
+
+    if [[ $failed -eq 0 ]]; then
+        log_ok "All tools updated!"
+    else
+        log_warn "$failed tool(s) failed to update"
+    fi
+}
+
+cmd_update_single() {
+    local tool="$1"
+    
+    if [[ -z "${TOOLS[$tool]:-}" ]]; then
+        log_error "Unknown tool: $tool"
+        echo "Available: ${!TOOLS[*]}"
+        exit 1
+    fi
+    
+    update_tool "$tool"
+}
+
+# Main
+case "${1:-}" in
+    --check|-c)
+        cmd_check
+        ;;
+    --tool|-t)
+        cmd_update_single "${2:-}"
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    "")
+        cmd_update_all
+        ;;
+    *)
+        # Assume it's a tool name
+        if [[ -n "${TOOLS[$1]:-}" ]]; then
+            cmd_update_single "$1"
+        else
+            log_error "Unknown option: $1"
+            usage
+            exit 1
+        fi
+        ;;
+esac

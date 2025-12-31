@@ -313,18 +313,51 @@ else
     echo "  bw already installed"
 fi
 
-# Install Claude Code
-if ! command -v claude &>/dev/null; then
-    echo "  Installing Claude Code..."
-    if command -v bun &>/dev/null; then
-        bun install -g @anthropic-ai/claude-code 2>/dev/null && echo "    claude installed (bun)" || echo "    claude install failed"
-    elif command -v npm &>/dev/null; then
-        npm install -g @anthropic-ai/claude-code 2>/dev/null && echo "    claude installed (npm)" || echo "    claude install failed"
+# Install AI CLI tools
+echo ""
+echo "Installing AI CLI tools..."
+
+# Helper function for npm installs
+npm_install() {
+    local cmd="$1"
+    local pkg="$2"
+    local name="$3"
+
+    if ! command -v "$cmd" &>/dev/null; then
+        echo "  Installing $name..."
+        if command -v bun &>/dev/null; then
+            bun install -g "$pkg" 2>/dev/null && echo "    $cmd installed (bun)" || echo "    $cmd install failed"
+        elif command -v npm &>/dev/null; then
+            npm install -g "$pkg" 2>/dev/null && echo "    $cmd installed (npm)" || echo "    $cmd install failed"
+        else
+            echo "    Skipping $cmd (npm/bun not available)"
+        fi
     else
-        echo "    Skipping claude (npm/bun not available)"
+        echo "  $cmd already installed"
+    fi
+}
+
+# Claude Code (Anthropic)
+npm_install "claude" "@anthropic-ai/claude-code" "Claude Code"
+
+# Gemini CLI (Google)
+npm_install "gemini" "@google/gemini-cli" "Gemini CLI"
+
+# Codex CLI (OpenAI)
+npm_install "codex" "@openai/codex" "Codex CLI"
+
+# Aider (Python)
+if ! command -v aider &>/dev/null; then
+    echo "  Installing Aider..."
+    if command -v pipx &>/dev/null; then
+        pipx install aider-chat 2>/dev/null && echo "    aider installed (pipx)" || echo "    aider install failed"
+    elif command -v pip &>/dev/null; then
+        pip install --user aider-chat 2>/dev/null && echo "    aider installed (pip)" || echo "    aider install failed"
+    else
+        echo "    Skipping aider (pip not available)"
     fi
 else
-    echo "  claude already installed"
+    echo "  aider already installed"
 fi
 
 # Summary
@@ -351,7 +384,9 @@ echo "  2. Set your PAI repo URL under 'pai: repo:'"
 echo "  3. Run: vendor sync pai"
 echo "  4. Update anytime: vendor update pai"
 echo ""
-echo "Optional: Install additional AI tools"
-echo "  - Ollama:  curl -fsSL https://ollama.ai/install.sh | sh"
-echo "  - Aider:   pip install aider-chat"
-echo "  - llm:     pip install llm"
+echo "Optional: Install additional tools"
+echo "  - Ollama (local models): curl -fsSL https://ollama.ai/install.sh | sh"
+echo "  - llm (Simon Willison):  pip install llm"
+echo ""
+echo "Keep AI tools updated:"
+echo "  ai-update              # Update all AI CLI tools"
