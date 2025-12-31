@@ -4,10 +4,12 @@
 
 set -uo pipefail
 
-MAESTRO_ROOT="${MAESTRO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-CACHE_DIR="$MAESTRO_ROOT/.cache"
+# XDG-compliant paths
+MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+MAESTRO_STATE="${MAESTRO_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lifemaestro}"
+CACHE_DIR="$MAESTRO_STATE/cache"
 INDEX_FILE="$CACHE_DIR/skills-index.json"
-PREFERENCES_FILE="$MAESTRO_ROOT/config/skills-preferences.json"
+PREFERENCES_FILE="$MAESTRO_STATE/skills-preferences.json"
 
 # Colors
 RED='\033[0;31m'
