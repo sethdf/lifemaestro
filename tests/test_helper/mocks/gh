@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Mock GitHub CLI
+
+# Capture arguments for verification
+echo "$@" >> "${BATS_TEST_TMPDIR:-/tmp}/gh.calls"
+
+case "$1" in
+    auth)
+        case "$2" in
+            status)
+                echo "github.com"
+                echo "  Logged in to github.com as testuser"
+                exit 0
+                ;;
+            token)
+                echo "gho_mock_token_12345"
+                exit 0
+                ;;
+        esac
+        ;;
+    issue)
+        case "$2" in
+            view)
+                cat <<'EOF'
+title:  Test Issue
+state:  OPEN
+author: testuser
+number: 123
+body:   Test issue description
+EOF
+                ;;
+            list)
+                echo "#123  Test Issue  OPEN"
+                ;;
+        esac
+        ;;
+    pr)
+        case "$2" in
+            view)
+                cat <<'EOF'
+title:  Test PR
+state:  OPEN
+author: testuser
+number: 456
+EOF
+                ;;
+        esac
+        ;;
+    api)
+        # Return mock JSON for API calls
+        cat <<'EOF'
+{
+  "number": 123,
+  "title": "Test Issue",
+  "state": "open"
+}
+EOF
+        ;;
+    *)
+        exit 0
+        ;;
+esac

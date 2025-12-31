@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# Mock dasel for testing TOML parsing
+
+# Capture arguments for verification
+echo "$@" >> "${BATS_TEST_TMPDIR:-/tmp}/dasel.calls"
+
+# Parse arguments to extract key
+key=""
+config_file=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -f) config_file="$2"; shift 2 ;;
+        -r|-w|-m) shift 2 ;;
+        toml|json) shift ;;
+        -*)  shift ;;
+        *)
+            if [[ -z "$key" ]]; then
+                key="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Check for mock response file
+mock_file="${BATS_TEST_TMPDIR:-/tmp}/mock_dasel_${key//\./_}"
+if [[ -f "$mock_file" ]]; then
+    content=$(cat "$mock_file")
+    if [[ "$content" == "__MOCK_FAIL__" ]]; then
+        exit 1
+    fi
+    echo "$content"
+    exit 0
+fi
+
+# Default responses based on key patterns
+case "$key" in
+    "maestro.version")
+        echo "0.2.0"
+        ;;
+    "zones.default.name"|"zones.default")
+        echo "personal"
+        ;;
+    "zones.personal.name")
+        echo "personal"
+        ;;
+    "zones.personal.description")
+        echo "Personal projects and home tasks"
+        ;;
+    "zones.personal.git.user")
+        echo "Test User"
+        ;;
+    "zones.personal.git.email")
+        echo "test@personal.example.com"
+        ;;
+    "zones.personal.features.sdp")
+        echo "false"
+        ;;
+    "zones.personal.features.jira")
+        echo "false"
+        ;;
+    "zones.personal.features.github_issues")
+        echo "true"
+        ;;
+    "zones.work.name")
+        echo "work"
+        ;;
+    "zones.work.description")
+        echo "Work projects"
+        ;;
+    "zones.work.git.user")
+        echo "Work User"
+        ;;
+    "zones.work.git.email")
+        echo "test@work.example.com"
+        ;;
+    "zones.work.features.sdp")
+        echo "true"
+        ;;
+    "zones.work.features.jira")
+        echo "true"
+        ;;
+    "zones.work.sdp.base_url")
+        echo "https://sdp.example.com/api/v3"
+        ;;
+    "zones.work.jira.base_url")
+        echo "https://jira.example.com"
+        ;;
+    "sessions.base_dir")
+        echo "~/ai-sessions"
+        ;;
+    "sessions.default_zone")
+        echo "personal"
+        ;;
+    # For zone listing - return JSON array
+    "zones.-")
+        echo '["personal", "work"]'
+        ;;
+    *)
+        # Unknown key - exit with error (simulates missing key)
+        exit 1
+        ;;
+esac

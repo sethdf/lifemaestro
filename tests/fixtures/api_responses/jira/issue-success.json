@@ -1,0 +1,50 @@
+{
+  "key": "PROJ-123",
+  "id": "10001",
+  "self": "https://jira.example.com/rest/api/3/issue/10001",
+  "fields": {
+    "summary": "Test Jira Issue",
+    "status": {
+      "name": "In Progress",
+      "id": "3"
+    },
+    "priority": {
+      "name": "High",
+      "id": "2"
+    },
+    "assignee": {
+      "displayName": "Test User",
+      "emailAddress": "test@example.com"
+    },
+    "reporter": {
+      "displayName": "Reporter User",
+      "emailAddress": "reporter@example.com"
+    },
+    "created": "2024-01-15T10:00:00.000Z",
+    "updated": "2024-01-16T14:30:00.000Z",
+    "labels": ["bug", "priority"],
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "This is a test issue description."
+            }
+          ]
+        }
+      ]
+    },
+    "issuetype": {
+      "name": "Bug",
+      "id": "1"
+    },
+    "project": {
+      "key": "PROJ",
+      "name": "Test Project"
+    }
+  }
+}

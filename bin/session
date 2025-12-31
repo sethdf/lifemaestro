@@ -91,6 +91,24 @@ case "$cmd" in
     # ============================================
     # UTILITIES
     # ============================================
+    close)
+        # Session close requires Claude Code for AI analysis
+        if [[ -z "${CLAUDE_CODE:-}" ]] && [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+            cli::error "Session close requires Claude Code for AI-powered categorization."
+            cli::out ""
+            cli::out "Run 'session close' inside Claude Code, or use:"
+            cli::out "  session done    # Quick close without AI analysis"
+            exit 1
+        fi
+        # Check for CLAUDE.md
+        if [[ ! -f "CLAUDE.md" ]]; then
+            cli::error "No CLAUDE.md found. Is this a session directory?"
+            exit 1
+        fi
+        # Print instructions for Claude to handle
+        cli::out "Invoke /session-close skill to close this session with AI categorization."
+        cli::out "Reading session from: $PWD"
+        ;;
     compact)
         session::compact
         ;;
@@ -104,6 +122,38 @@ case "$cmd" in
         if [[ -f "CLAUDE.md" ]]; then
             cli::out "Session file: CLAUDE.md"
         fi
+        if [[ -f ".session.json" ]]; then
+            cli::out "Metadata: .session.json"
+            if command -v jq &>/dev/null; then
+                session_status=$(jq -r '.status // "unknown"' .session.json)
+                category=$(jq -r '.category // "uncategorized"' .session.json)
+                cli::out "  Status: $session_status, Category: $category"
+
+                # Show skills used
+                skills_count=$(jq -r '.skills_used | length' .session.json 2>/dev/null || echo "0")
+                if [[ "$skills_count" -gt 0 ]]; then
+                    cli::out "  Skills used: $skills_count"
+                    jq -r '.skills_used[] | "    - \(.name) (\(.invocations)x)"' .session.json 2>/dev/null
+                fi
+            fi
+        fi
+        ;;
+    track-skill)
+        # Track skill usage in current session
+        skill_name="${1:-}"
+        if [[ -z "$skill_name" ]]; then
+            cli::die_usage "Usage: session track-skill <skill-name>"
+        fi
+        if [[ ! -f ".session.json" ]]; then
+            cli::warn "No .session.json in current directory"
+            exit 0
+        fi
+        source "$MAESTRO_ROOT/sessions/schema.sh"
+        session::track_skill "." "$skill_name"
+        cli::out "Tracked: $skill_name"
+        ;;
+    migrate)
+        "$MAESTRO_ROOT/.claude/skills/session-manager/scripts/session-migrate.sh" "$@"
         ;;
 
     # ============================================
@@ -140,9 +190,11 @@ case "$cmd" in
         cli::out "    context              Show current context"
         cli::out ""
         cli::out "Utilities:"
+        cli::out "    close                Close session with AI categorization (Claude Code)"
         cli::out "    compact              Archive CLAUDE.md"
-        cli::out "    done                 Mark session complete"
+        cli::out "    done                 Quick close without AI analysis"
         cli::out "    status               Show current status"
+        cli::out "    migrate [--dry-run]  Add .session.json to existing sessions"
         cli::out ""
         cli::out "Aliases (claude-sessions compatible):"
         cli::out "    cc, ccticket, ccw, cch, ccinfra, cclearn, ccls, ccgo"

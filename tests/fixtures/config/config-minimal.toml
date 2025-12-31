@@ -1,0 +1,11 @@
+# Minimal valid configuration
+
+[maestro]
+version = "0.2.0"
+
+[zones.default]
+name = "default"
+
+[zones.default.git]
+user = "Default User"
+email = "default@example.com"

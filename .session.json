@@ -1,0 +1,27 @@
+{
+  "id": "lifemaestro-dev",
+  "created": "2025-12-31T04:48:51Z",
+  "closed": null,
+  "status": "active",
+  "zone": "personal",
+  "type": "development",
+  "tags": [],
+  "category": null,
+  "outcome": null,
+  "learnings": [],
+  "skills_used": [
+    {
+      "name": "session-manager",
+      "invocations": 2,
+      "first_used": "2025-12-31T04:49:24Z",
+      "last_used": "2025-12-31T04:49:28Z"
+    },
+    {
+      "name": "skill-selector",
+      "invocations": 1,
+      "first_used": "2025-12-31T04:49:26Z",
+      "last_used": "2025-12-31T04:49:26Z"
+    }
+  ],
+  "summary": null
+}

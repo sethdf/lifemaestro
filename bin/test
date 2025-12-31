@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# bin/test - Run LifeMaestro test suite
+# Usage: bin/test [options] [category]
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TESTS_DIR="$PROJECT_ROOT/tests"
+HELPER_DIR="$TESTS_DIR/test_helper"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+usage() {
+    cat <<EOF
+Usage: bin/test [options] [category]
+
+Run the LifeMaestro test suite.
+
+Categories:
+    all           Run all tests (default)
+    unit          Run unit tests only
+    integration   Run integration tests only
+    security      Run security tests only
+
+Options:
+    --setup       Install test dependencies (bats-support, bats-assert)
+    --parallel    Run tests in parallel
+    --verbose     Verbose output
+    -f PATTERN    Filter tests by name pattern
+    -h, --help    Show this help
+
+Examples:
+    bin/test                      # Run all tests
+    bin/test unit                 # Run unit tests
+    bin/test --parallel           # Run all tests in parallel
+    bin/test -f "zone"            # Run tests matching "zone"
+    bin/test --setup              # Install dependencies
+EOF
+}
+
+setup_dependencies() {
+    echo -e "${BLUE}Setting up test dependencies...${NC}"
+
+    # Check for bats
+    if ! command -v bats &>/dev/null; then
+        echo -e "${YELLOW}bats not found. Please install:${NC}"
+        echo "  npm install -g bats"
+        echo "  # or: brew install bats-core"
+        echo "  # or: apt install bats"
+        exit 1
+    fi
+
+    # Clone bats-support if not present
+    if [[ ! -d "$HELPER_DIR/bats-support" ]]; then
+        echo "Installing bats-support..."
+        git clone --depth 1 https://github.com/bats-core/bats-support "$HELPER_DIR/bats-support"
+    else
+        echo -e "${GREEN}bats-support already installed${NC}"
+    fi
+
+    # Clone bats-assert if not present
+    if [[ ! -d "$HELPER_DIR/bats-assert" ]]; then
+        echo "Installing bats-assert..."
+        git clone --depth 1 https://github.com/bats-core/bats-assert "$HELPER_DIR/bats-assert"
+    else
+        echo -e "${GREEN}bats-assert already installed${NC}"
+    fi
+
+    echo -e "${GREEN}Dependencies ready!${NC}"
+}
+
+check_dependencies() {
+    local missing=0
+
+    if ! command -v bats &>/dev/null; then
+        echo -e "${RED}Error: bats not found${NC}"
+        missing=1
+    fi
+
+    if [[ ! -d "$HELPER_DIR/bats-support" ]]; then
+        echo -e "${RED}Error: bats-support not found${NC}"
+        missing=1
+    fi
+
+    if [[ ! -d "$HELPER_DIR/bats-assert" ]]; then
+        echo -e "${RED}Error: bats-assert not found${NC}"
+        missing=1
+    fi
+
+    if [[ $missing -eq 1 ]]; then
+        echo ""
+        echo "Run 'bin/test --setup' to install dependencies"
+        exit 1
+    fi
+}
+
+# Parse arguments
+CATEGORY="all"
+BATS_ARGS=()
+DO_SETUP=false
+PARALLEL=false
+FILTER=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --setup)
+            DO_SETUP=true
+            shift
+            ;;
+        --parallel|-j)
+            PARALLEL=true
+            shift
+            ;;
+        --verbose|-v)
+            BATS_ARGS+=("--verbose-run")
+            shift
+            ;;
+        -f|--filter)
+            FILTER="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        all|unit|integration|security)
+            CATEGORY="$1"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Handle setup
+if [[ "$DO_SETUP" == "true" ]]; then
+    setup_dependencies
+    exit 0
+fi
+
+# Check dependencies
+check_dependencies
+
+# Build test path
+case "$CATEGORY" in
+    all)
+        TEST_PATH="$TESTS_DIR"
+        ;;
+    unit)
+        TEST_PATH="$TESTS_DIR/unit"
+        ;;
+    integration)
+        TEST_PATH="$TESTS_DIR/integration"
+        ;;
+    security)
+        TEST_PATH="$TESTS_DIR/security"
+        ;;
+esac
+
+# Add parallel flag
+if [[ "$PARALLEL" == "true" ]]; then
+    BATS_ARGS+=("-j" "4")
+fi
+
+# Add filter
+if [[ -n "$FILTER" ]]; then
+    BATS_ARGS+=("-f" "$FILTER")
+fi
+
+# Run tests
+echo -e "${BLUE}Running $CATEGORY tests...${NC}"
+echo ""
+
+cd "$PROJECT_ROOT"
+bats "${BATS_ARGS[@]}" "$TEST_PATH"

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Mock jq - mostly pass through to real jq if available, or provide basic functionality
+
+# Capture arguments for verification
+echo "$@" >> "${BATS_TEST_TMPDIR:-/tmp}/jq.calls"
+
+# Try to use real jq if available (not in mock path)
+real_jq=$(PATH="${PATH#*:}" command -v jq 2>/dev/null)
+
+if [[ -n "$real_jq" ]]; then
+    exec "$real_jq" "$@"
+fi
+
+# Basic fallback for common patterns
+filter="$1"
+shift
+
+# Read input
+input=$(cat)
+
+case "$filter" in
+    -r|--raw-output)
+        filter="$1"
+        shift
+        ;;
+esac
+
+case "$filter" in
+    ".")
+        echo "$input"
+        ;;
+    ".key"|".id"|".number")
+        # Extract simple field - very basic
+        echo "$input" | grep -oP '"(key|id|number)":\s*"?\K[^",}]+' | head -1
+        ;;
+    ".fields.summary"|".title"|".subject")
+        echo "$input" | grep -oP '"(summary|title|subject)":\s*"\K[^"]+' | head -1
+        ;;
+    "-e")
+        # Check if valid JSON
+        echo "$input" | grep -q "^{" && exit 0 || exit 1
+        ;;
+    *)
+        # Pass through input as-is for unknown filters
+        echo "$input"
+        ;;
+esac

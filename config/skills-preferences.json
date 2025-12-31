@@ -1,0 +1,7 @@
+{
+  "pinned": {
+    "pdf": "anthropic:pdf"
+  },
+  "mode": "interactive",
+  "blacklist": []
+}

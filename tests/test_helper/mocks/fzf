@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Mock fzf - return first option or configured response
+
+# Capture arguments for verification
+echo "$@" >> "${BATS_TEST_TMPDIR:-/tmp}/fzf.calls"
+
+# Check for mock response
+if [[ -n "${MOCK_FZF_RESPONSE:-}" ]]; then
+    echo "$MOCK_FZF_RESPONSE"
+    exit 0
+fi
+
+# Read input and return first line (simulates selecting first option)
+read -r first_line
+echo "$first_line"

@@ -1,0 +1,38 @@
+{
+  "response_status": {
+    "status_code": "2000",
+    "status": "success"
+  },
+  "request": {
+    "id": "12345",
+    "subject": "Test SDP Request",
+    "description": "This is a test request description",
+    "status": {
+      "name": "Open",
+      "id": "1"
+    },
+    "priority": {
+      "name": "High",
+      "id": "2"
+    },
+    "requester": {
+      "name": "Test User",
+      "email_id": "test@example.com"
+    },
+    "technician": {
+      "name": "Tech User",
+      "email_id": "tech@example.com"
+    },
+    "created_time": {
+      "display_value": "Jan 15, 2024 10:00 AM",
+      "value": "1705312800000"
+    },
+    "due_by_time": {
+      "display_value": "Jan 20, 2024 05:00 PM",
+      "value": "1705777200000"
+    },
+    "category": {
+      "name": "IT Support"
+    }
+  }
+}

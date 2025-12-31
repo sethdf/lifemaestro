@@ -2,6 +2,11 @@
 # lifemaestro/sessions/session.sh - AI session management (agnostic)
 # Evolved from claude-sessions, now supports any AI provider
 
+# Load metadata schema helpers
+if [[ -f "$MAESTRO_ROOT/sessions/schema.sh" ]]; then
+    source "$MAESTRO_ROOT/sessions/schema.sh"
+fi
+
 SESSIONS_BASE="${SESSIONS_BASE:-$(maestro::config 'sessions.base_dir' "$HOME/ai-sessions")}"
 SESSIONS_BASE="${SESSIONS_BASE/#\~/$HOME}"
 
@@ -77,10 +82,10 @@ session::show_zone() {
     local zone=$(session::current_zone)
     echo ""
     echo "Zone: $zone"
-    echo "  Git:     $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>"
+    echo "  Git:     ${GIT_AUTHOR_NAME:-not set} <${GIT_AUTHOR_EMAIL:-not set}>"
     echo "  AWS:     ${AWS_PROFILE:-not set}"
-    echo "  AI:      $MAESTRO_AI_PROVIDER ($MAESTRO_AI_BACKEND)"
-    echo "  Safety:  $MAESTRO_SAFETY"
+    echo "  AI:      ${MAESTRO_AI_PROVIDER:-not set} (${MAESTRO_AI_BACKEND:-not set})"
+    echo "  Safety:  ${MAESTRO_SAFETY:-standard}"
 }
 
 # Alias for backwards compatibility
@@ -190,6 +195,11 @@ session::create() {
 
     # Navigate to session
     cd "$session_dir"
+
+    # Initialize session metadata
+    if type session::metadata_init &>/dev/null; then
+        session::metadata_init "$session_dir" "$name" "$zone" "$type"
+    fi
 
     utils::success "Created session: $session_dir"
     echo ""
@@ -333,6 +343,11 @@ session::create_ticket() {
 
     # Navigate to session
     cd "$session_dir"
+
+    # Initialize session metadata
+    if type session::metadata_init &>/dev/null; then
+        session::metadata_init "$session_dir" "$name" "$zone" "ticket"
+    fi
 
     utils::success "Created ticket session: $session_dir"
     echo ""
@@ -526,7 +541,7 @@ session::compact() {
 }
 
 session::done() {
-    # Mark session as complete
+    # Mark session as complete (legacy - use 'session close' for full workflow)
     local session_dir="$PWD"
 
     if [[ -f "CLAUDE.md" ]]; then
@@ -535,10 +550,20 @@ session::done() {
         echo "Session completed: $(date '+%Y-%m-%d %H:%M')" >> CLAUDE.md
     fi
 
+    # Update metadata if exists
+    if type session::metadata_close &>/dev/null && session::metadata_exists "$session_dir"; then
+        session::metadata_close "$session_dir" "completed"
+    fi
+
     git add -A
     git commit -m "Session complete" || true
 
     utils::success "Session marked complete"
+
+    # Hint about new close command
+    if session::metadata_exists "$session_dir"; then
+        utils::info "Tip: Use 'session close' in Claude Code for AI categorization"
+    fi
 }
 
 # ============================================

@@ -1,0 +1,46 @@
+# Configuration with multiple zones for testing
+
+[maestro]
+version = "0.2.0"
+
+[zones.default]
+name = "personal"
+
+[zones.personal]
+name = "personal"
+description = "Personal zone"
+
+[zones.personal.git]
+user = "Personal User"
+email = "personal@example.com"
+
+[zones.work]
+name = "work"
+description = "Work zone"
+
+[zones.work.git]
+user = "Work User"
+email = "work@company.com"
+
+[zones.work.features]
+sdp = true
+jira = true
+
+[zones.infra]
+name = "infra"
+description = "Infrastructure zone"
+
+[zones.infra.git]
+user = "Infra User"
+email = "infra@company.com"
+
+[zones.infra.features]
+aws = true
+
+[zones.learning]
+name = "learning"
+description = "Learning and experiments"
+
+[zones.learning.git]
+user = "Learner"
+email = "learn@example.com"

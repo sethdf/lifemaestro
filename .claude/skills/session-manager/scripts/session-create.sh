@@ -119,6 +119,24 @@ ${rules}
 EOF
 fi
 
+# Initialize session metadata (.session.json)
+created_timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+cat > "$session_dir/.session.json" << EOF
+{
+  "id": "$session_name",
+  "created": "$created_timestamp",
+  "closed": null,
+  "status": "active",
+  "zone": "$zone",
+  "type": "$category",
+  "tags": [],
+  "category": null,
+  "outcome": null,
+  "learnings": [],
+  "summary": null
+}
+EOF
+
 # Git operations
 cd "$repo_path"
 git add "$session_name"

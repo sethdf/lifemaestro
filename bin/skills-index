@@ -1,0 +1,666 @@
+#!/usr/bin/env bash
+# skills-index - Build and search local skills index from GitHub/SkillsMP
+# This creates a searchable cache of 38,000+ skills for AI-assisted selection
+
+set -uo pipefail
+
+MAESTRO_ROOT="${MAESTRO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+CACHE_DIR="$MAESTRO_ROOT/.cache"
+INDEX_FILE="$CACHE_DIR/skills-index.json"
+PREFERENCES_FILE="$MAESTRO_ROOT/config/skills-preferences.json"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+DIM='\033[2m'
+NC='\033[0m'
+
+log_info()  { echo -e "${BLUE}ℹ${NC} $*"; }
+log_ok()    { echo -e "${GREEN}✓${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}!${NC} $*"; }
+log_error() { echo -e "${RED}✗${NC} $*" >&2; }
+
+usage() {
+    cat <<EOF
+skills-index - Build and search the local skills index
+
+Usage: skills-index <command> [args...]
+
+Commands:
+    update              Rebuild index from GitHub (requires GITHUB_TOKEN)
+    search <query>      Search index for matching skills
+    select <query>      AI-assisted skill selection (respects pins/mode)
+    pin <category> <skill>   Pin a skill for a category
+    unpin <category>    Remove pin for a category
+    pins                List all pinned skills
+    mode [auto|interactive]  Set/show selection mode
+    stats               Show index statistics
+
+Search Options:
+    --limit N           Limit results (default: 10)
+    --json              Output as JSON
+    --installed-only    Only show installed skills
+
+Examples:
+    skills-index update
+    skills-index search "pdf processing"
+    skills-index select "extract tables from pdf"
+    skills-index pin pdf anthropic:pdf
+    skills-index mode interactive
+
+EOF
+}
+
+# Ensure cache directory exists
+mkdir -p "$CACHE_DIR"
+mkdir -p "$(dirname "$PREFERENCES_FILE")"
+
+# Initialize preferences if not exists
+init_preferences() {
+    if [[ ! -f "$PREFERENCES_FILE" ]]; then
+        cat > "$PREFERENCES_FILE" <<EOF
+{
+  "pinned": {},
+  "mode": "auto",
+  "blacklist": []
+}
+EOF
+    fi
+}
+
+# Update index from GitHub
+cmd_update() {
+    log_info "Building skills index from GitHub..."
+
+    if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+        log_warn "GITHUB_TOKEN not set. Using unauthenticated requests (rate limited)."
+        log_info "Set GITHUB_TOKEN for better results."
+    fi
+
+    local temp_file=$(mktemp)
+    local auth_header=""
+    [[ -n "${GITHUB_TOKEN:-}" ]] && auth_header="Authorization: token $GITHUB_TOKEN"
+
+    # Start JSON
+    echo '{"updated":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'","skills":[' > "$temp_file"
+
+    local count=0
+    local first=true
+    local page=1
+    local per_page=100
+
+    log_info "Searching GitHub for SKILL.md files..."
+
+    # Search GitHub for SKILL.md files
+    while [[ $page -le 10 ]]; do  # GitHub search API limited to 1000 results
+        local response
+        if [[ -n "$auth_header" ]]; then
+            response=$(curl -s -H "$auth_header" \
+                "https://api.github.com/search/code?q=filename:SKILL.md+extension:md&per_page=$per_page&page=$page")
+        else
+            response=$(curl -s \
+                "https://api.github.com/search/code?q=filename:SKILL.md+extension:md&per_page=$per_page&page=$page")
+        fi
+
+        # Check for rate limit
+        if echo "$response" | grep -q "rate limit"; then
+            log_warn "Rate limited. Try again later or set GITHUB_TOKEN."
+            break
+        fi
+
+        # Parse results
+        local items=$(echo "$response" | jq -r '.items // []')
+        local item_count=$(echo "$items" | jq 'length')
+
+        if [[ "$item_count" -eq 0 ]]; then
+            break
+        fi
+
+        # Process each result
+        echo "$items" | jq -c '.[]' | while read -r item; do
+            local repo=$(echo "$item" | jq -r '.repository.full_name')
+            local path=$(echo "$item" | jq -r '.path')
+            local skill_name=$(basename "$(dirname "$path")")
+
+            # Skip if not a proper skill directory
+            [[ "$skill_name" == "." ]] && continue
+
+            # Get repo info for stars
+            local repo_info
+            if [[ -n "$auth_header" ]]; then
+                repo_info=$(curl -s -H "$auth_header" "https://api.github.com/repos/$repo" 2>/dev/null)
+            else
+                repo_info=$(curl -s "https://api.github.com/repos/$repo" 2>/dev/null)
+            fi
+            local stars=$(echo "$repo_info" | jq -r '.stargazers_count // 0')
+            local topics=$(echo "$repo_info" | jq -c '.topics // []')
+
+            # Add to index
+            if [[ "$first" == "true" ]]; then
+                first=false
+            else
+                echo "," >> "$temp_file"
+            fi
+
+            cat >> "$temp_file" <<EOF
+{
+  "name": "$skill_name",
+  "repo": "$repo",
+  "path": "$(dirname "$path")",
+  "stars": $stars,
+  "topics": $topics
+}
+EOF
+            ((count++))
+            echo -ne "\r  Found $count skills..."
+        done
+
+        ((page++))
+        sleep 1  # Be nice to GitHub API
+    done
+
+    # Close JSON
+    echo '],"count":'$count'}' >> "$temp_file"
+
+    # Validate and move
+    if jq . "$temp_file" > /dev/null 2>&1; then
+        mv "$temp_file" "$INDEX_FILE"
+        echo ""
+        log_ok "Index updated: $count skills"
+    else
+        rm "$temp_file"
+        log_error "Failed to build valid index"
+        return 1
+    fi
+}
+
+# Quick update using known skill repos
+cmd_update_quick() {
+    log_info "Quick index update from known repositories..."
+
+    local temp_file=$(mktemp)
+
+    # Known skill repositories (from GitHub)
+    local repos=(
+        "anthropics/skills:29600"
+        "anthropics/claude-code:15000"
+    )
+
+    # Also include local vendor skills
+    local vendor_dir="$MAESTRO_ROOT/vendor"
+    local local_skills_dir="$MAESTRO_ROOT/.claude/skills"
+
+    # Collect all skills first
+    local skills_json="[]"
+
+    for repo_info in "${repos[@]}"; do
+        local repo="${repo_info%:*}"
+        local stars="${repo_info#*:}"
+
+        log_info "Fetching from $repo..."
+
+        # Clone or update
+        local repo_dir="$CACHE_DIR/repos/${repo//\//-}"
+        if [[ -d "$repo_dir/.git" ]]; then
+            git -C "$repo_dir" pull --quiet 2>/dev/null || true
+        else
+            mkdir -p "$(dirname "$repo_dir")"
+            git clone --depth 1 --quiet "https://github.com/$repo.git" "$repo_dir" 2>/dev/null || continue
+        fi
+
+        # Find all SKILL.md files and build JSON
+        while IFS= read -r skill_file; do
+            [[ -z "$skill_file" ]] && continue
+
+            local skill_dir=$(dirname "$skill_file")
+            local skill_name=$(basename "$skill_dir")
+            local rel_path="${skill_dir#$repo_dir/}"
+
+            # Skip template directory
+            [[ "$skill_name" == "template" ]] && continue
+
+            # Extract description from SKILL.md
+            local description=""
+            description=$(awk '/^description:/ {
+                if ($0 ~ /description: [^|"]+/) {
+                    sub(/^description: */, "")
+                    gsub(/"/, "")
+                    print
+                    exit
+                }
+            }' "$skill_file" 2>/dev/null || echo "")
+
+            # Build skill JSON object
+            local skill_obj
+            skill_obj=$(jq -n \
+                --arg name "$skill_name" \
+                --arg desc "$description" \
+                --arg repo "$repo" \
+                --arg path "$rel_path" \
+                --argjson stars "$stars" \
+                '{name: $name, description: $desc, repo: $repo, path: $path, stars: $stars, source: "known"}')
+
+            # Append to array
+            skills_json=$(echo "$skills_json" | jq --argjson skill "$skill_obj" '. + [$skill]')
+
+        done < <(find "$repo_dir" -name "SKILL.md" -type f 2>/dev/null)
+    done
+
+    # Add vendor skills (PAI, etc.)
+    if [[ -d "$vendor_dir" ]]; then
+        log_info "Adding vendor skills..."
+        for vendor in "$vendor_dir"/*/; do
+            [[ -d "$vendor" ]] || continue
+            local vendor_name=$(basename "$vendor")
+            [[ "$vendor_name" == "sync.sh" ]] && continue
+
+            while IFS= read -r skill_file; do
+                [[ -z "$skill_file" ]] && continue
+
+                local skill_dir=$(dirname "$skill_file")
+                local skill_name=$(basename "$skill_dir")
+                local rel_path="${skill_dir#$vendor/}"
+
+                # Extract description
+                local description=""
+                description=$(awk '/^description:/ {
+                    if ($0 ~ /description: [^|"]+/) {
+                        sub(/^description: */, "")
+                        gsub(/"/, "")
+                        print
+                        exit
+                    }
+                }' "$skill_file" 2>/dev/null || echo "")
+
+                local skill_obj
+                skill_obj=$(jq -n \
+                    --arg name "$skill_name" \
+                    --arg desc "$description" \
+                    --arg repo "vendor/$vendor_name" \
+                    --arg path "$rel_path" \
+                    --argjson stars 99999 \
+                    '{name: $name, description: $desc, repo: $repo, path: $path, stars: $stars, source: "vendor", installed: true}')
+
+                skills_json=$(echo "$skills_json" | jq --argjson skill "$skill_obj" '. + [$skill]')
+
+            done < <(find "$vendor" -name "SKILL.md" -type f 2>/dev/null)
+        done
+    fi
+
+    # Add local skills (already in .claude/skills/)
+    if [[ -d "$local_skills_dir" ]]; then
+        log_info "Adding local skills..."
+        for skill_dir in "$local_skills_dir"/*/; do
+            [[ -d "$skill_dir" ]] || continue
+            local skill_name=$(basename "$skill_dir")
+
+            # Skip hidden directories
+            [[ "$skill_name" == .* ]] && continue
+
+            local skill_file="$skill_dir/SKILL.md"
+            [[ -f "$skill_file" ]] || continue
+
+            # Skip if already in index (from vendor or remote)
+            local already_indexed=$(echo "$skills_json" | jq --arg name "$skill_name" '[.[] | select(.name == $name)] | length')
+            [[ "$already_indexed" -gt 0 ]] && continue
+
+            # Determine source
+            local source="local"
+            [[ -L "${skill_dir%/}" ]] && source="external"
+
+            # Extract description
+            local description=""
+            description=$(awk '/^description:/ {
+                if ($0 ~ /description: [^|"]+/) {
+                    sub(/^description: */, "")
+                    gsub(/"/, "")
+                    print
+                    exit
+                }
+            }' "$skill_file" 2>/dev/null || echo "")
+
+            local skill_obj
+            skill_obj=$(jq -n \
+                --arg name "$skill_name" \
+                --arg desc "$description" \
+                --arg repo "local" \
+                --arg path "$skill_name" \
+                --argjson stars 100000 \
+                --arg source "$source" \
+                '{name: $name, description: $desc, repo: $repo, path: $path, stars: $stars, source: $source, installed: true}')
+
+            skills_json=$(echo "$skills_json" | jq --argjson skill "$skill_obj" '. + [$skill]')
+        done
+    fi
+
+    # Build final index
+    local count=$(echo "$skills_json" | jq 'length')
+
+    jq -n \
+        --arg updated "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        --argjson count "$count" \
+        --argjson skills "$skills_json" \
+        '{updated: $updated, count: $count, skills: $skills}' > "$temp_file"
+
+    # Validate and move
+    if jq . "$temp_file" > /dev/null 2>&1; then
+        mv "$temp_file" "$INDEX_FILE"
+        log_ok "Index updated: $count skills from known repos"
+    else
+        cat "$temp_file"
+        rm "$temp_file"
+        log_error "Failed to build valid index"
+        return 1
+    fi
+}
+
+# Search the index
+cmd_search() {
+    local query="${1:-}"
+    local limit=10
+    local json_output=false
+    local installed_only=false
+
+    shift || true
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --limit) limit="$2"; shift 2 ;;
+            --json) json_output=true; shift ;;
+            --installed-only) installed_only=true; shift ;;
+            *) shift ;;
+        esac
+    done
+
+    if [[ -z "$query" ]]; then
+        log_error "Usage: skills-index search <query>"
+        exit 1
+    fi
+
+    if [[ ! -f "$INDEX_FILE" ]]; then
+        log_error "Index not found. Run 'skills-index update' first."
+        exit 1
+    fi
+
+    # Search by name and description, sort by stars
+    local results
+    results=$(jq -r --arg q "$query" --argjson limit "$limit" '
+        .skills
+        | map(select(
+            (.name | ascii_downcase | contains($q | ascii_downcase)) or
+            (.description // "" | ascii_downcase | contains($q | ascii_downcase)) or
+            (.topics // [] | map(ascii_downcase) | any(contains($q | ascii_downcase)))
+        ))
+        | sort_by(-.stars)
+        | .[:$limit]
+    ' "$INDEX_FILE")
+
+    if [[ "$json_output" == "true" ]]; then
+        echo "$results"
+        return
+    fi
+
+    local count=$(echo "$results" | jq 'length')
+
+    if [[ "$count" -eq 0 ]]; then
+        log_warn "No skills found for: $query"
+        return
+    fi
+
+    echo -e "${BLUE}Search results for '$query':${NC}"
+    echo ""
+
+    echo "$results" | jq -r '.[] | "\(.name)|\(.stars)|\(.repo)|\(.path)|\(.description // "No description")"' | \
+    while IFS='|' read -r name stars repo path desc; do
+        # Check if installed
+        local installed=""
+        if [[ -d "$MAESTRO_ROOT/.claude/skills/$name" ]] || [[ -L "$MAESTRO_ROOT/.claude/skills/$name" ]]; then
+            installed=" ${GREEN}[installed]${NC}"
+        fi
+
+        # Format stars
+        local stars_fmt
+        if [[ $stars -ge 1000 ]]; then
+            stars_fmt="$(echo "scale=1; $stars/1000" | bc)k"
+        else
+            stars_fmt="$stars"
+        fi
+
+        printf "  ${GREEN}%-25s${NC} ⭐ %-6s %s\n" "$name" "$stars_fmt" "$installed"
+        printf "    ${DIM}%s${NC}\n" "${desc:0:70}"
+        printf "    ${DIM}Install: skills install %s/%s${NC}\n" "$repo" "$path"
+        echo ""
+    done
+}
+
+# AI-assisted skill selection
+cmd_select() {
+    local query="${1:-}"
+
+    if [[ -z "$query" ]]; then
+        log_error "Usage: skills-index select <query>"
+        exit 1
+    fi
+
+    init_preferences
+
+    # Get preferences
+    local mode=$(jq -r '.mode // "auto"' "$PREFERENCES_FILE")
+    local pinned=$(jq -r '.pinned // {}' "$PREFERENCES_FILE")
+
+    # Check for pinned skill matching query keywords
+    local pinned_skill=""
+    for keyword in $query; do
+        local pin=$(echo "$pinned" | jq -r --arg k "$keyword" '.[$k] // empty')
+        if [[ -n "$pin" ]]; then
+            pinned_skill="$pin"
+            break
+        fi
+    done
+
+    if [[ -n "$pinned_skill" ]]; then
+        echo -e "${GREEN}Using pinned skill:${NC} $pinned_skill"
+        echo "skill: $pinned_skill"
+        echo "source: pinned"
+        return
+    fi
+
+    # Search index
+    local results
+    results=$(cmd_search "$query" --limit 3 --json 2>/dev/null)
+
+    if [[ -z "$results" ]] || [[ "$results" == "[]" ]]; then
+        log_warn "No matching skills found"
+        return 1
+    fi
+
+    local top_skill=$(echo "$results" | jq -r '.[0]')
+    local skill_name=$(echo "$top_skill" | jq -r '.name')
+    local skill_repo=$(echo "$top_skill" | jq -r '.repo')
+    local skill_path=$(echo "$top_skill" | jq -r '.path')
+    local skill_stars=$(echo "$top_skill" | jq -r '.stars')
+
+    if [[ "$mode" == "auto" ]]; then
+        echo -e "${GREEN}Selected skill:${NC} $skill_name (⭐ $skill_stars)"
+        echo "skill: $skill_name"
+        echo "repo: $skill_repo"
+        echo "path: $skill_path"
+        echo "install: skills install $skill_repo/$skill_path"
+        echo "source: auto"
+    else
+        # Interactive mode - show top 3
+        echo -e "${BLUE}Top matching skills:${NC}"
+        echo ""
+
+        local i=1
+        echo "$results" | jq -r '.[] | "\(.name)|\(.stars)|\(.repo)|\(.path)|\(.description // "")"' | \
+        while IFS='|' read -r name stars repo path desc; do
+            local stars_fmt
+            if [[ $stars -ge 1000 ]]; then
+                stars_fmt="$(echo "scale=1; $stars/1000" | bc)k"
+            else
+                stars_fmt="$stars"
+            fi
+
+            local installed=""
+            if [[ -d "$MAESTRO_ROOT/.claude/skills/$name" ]]; then
+                installed=" [installed]"
+            fi
+
+            echo "  $i) $name (⭐ $stars_fmt)$installed"
+            echo "     ${desc:0:60}"
+            echo ""
+            ((i++))
+        done
+
+        echo "Enter choice (1-3), or press Enter for #1:"
+        read -r choice
+
+        choice="${choice:-1}"
+        local selected=$(echo "$results" | jq -r ".[$((choice-1))]")
+
+        skill_name=$(echo "$selected" | jq -r '.name')
+        skill_repo=$(echo "$selected" | jq -r '.repo')
+        skill_path=$(echo "$selected" | jq -r '.path')
+
+        echo ""
+        echo "skill: $skill_name"
+        echo "repo: $skill_repo"
+        echo "path: $skill_path"
+        echo "install: skills install $skill_repo/$skill_path"
+        echo "source: interactive"
+    fi
+}
+
+# Pin a skill for a category
+cmd_pin() {
+    local category="${1:-}"
+    local skill="${2:-}"
+
+    if [[ -z "$category" ]] || [[ -z "$skill" ]]; then
+        log_error "Usage: skills-index pin <category> <skill>"
+        echo "Example: skills-index pin pdf anthropic:pdf"
+        exit 1
+    fi
+
+    init_preferences
+
+    jq --arg cat "$category" --arg skill "$skill" \
+        '.pinned[$cat] = $skill' "$PREFERENCES_FILE" > "$PREFERENCES_FILE.tmp"
+    mv "$PREFERENCES_FILE.tmp" "$PREFERENCES_FILE"
+
+    log_ok "Pinned '$skill' for category '$category'"
+}
+
+# Unpin a category
+cmd_unpin() {
+    local category="${1:-}"
+
+    if [[ -z "$category" ]]; then
+        log_error "Usage: skills-index unpin <category>"
+        exit 1
+    fi
+
+    init_preferences
+
+    jq --arg cat "$category" 'del(.pinned[$cat])' "$PREFERENCES_FILE" > "$PREFERENCES_FILE.tmp"
+    mv "$PREFERENCES_FILE.tmp" "$PREFERENCES_FILE"
+
+    log_ok "Unpinned category '$category'"
+}
+
+# List pins
+cmd_pins() {
+    init_preferences
+
+    echo -e "${BLUE}Pinned Skills:${NC}"
+    echo ""
+
+    local pins=$(jq -r '.pinned // {}' "$PREFERENCES_FILE")
+    local count=$(echo "$pins" | jq 'length')
+
+    if [[ "$count" -eq 0 ]]; then
+        echo "  (no pins configured)"
+        return
+    fi
+
+    echo "$pins" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+}
+
+# Set/show mode
+cmd_mode() {
+    local new_mode="${1:-}"
+
+    init_preferences
+
+    if [[ -z "$new_mode" ]]; then
+        local current=$(jq -r '.mode // "auto"' "$PREFERENCES_FILE")
+        echo "Current mode: $current"
+        echo ""
+        echo "Modes:"
+        echo "  auto        - AI picks best skill automatically"
+        echo "  interactive - Show top 3 options for user to choose"
+        return
+    fi
+
+    if [[ "$new_mode" != "auto" ]] && [[ "$new_mode" != "interactive" ]]; then
+        log_error "Invalid mode. Use 'auto' or 'interactive'"
+        exit 1
+    fi
+
+    jq --arg mode "$new_mode" '.mode = $mode' "$PREFERENCES_FILE" > "$PREFERENCES_FILE.tmp"
+    mv "$PREFERENCES_FILE.tmp" "$PREFERENCES_FILE"
+
+    log_ok "Mode set to: $new_mode"
+}
+
+# Show stats
+cmd_stats() {
+    if [[ ! -f "$INDEX_FILE" ]]; then
+        log_warn "Index not found. Run 'skills-index update' first."
+        return
+    fi
+
+    local updated=$(jq -r '.updated' "$INDEX_FILE")
+    local count=$(jq -r '.count // (.skills | length)' "$INDEX_FILE")
+    local top_repos=$(jq -r '[.skills[].repo] | group_by(.) | map({repo: .[0], count: length}) | sort_by(-.count) | .[:5]' "$INDEX_FILE")
+
+    echo -e "${BLUE}Skills Index Statistics${NC}"
+    echo ""
+    echo "Updated:      $updated"
+    echo "Total skills: $count"
+    echo ""
+    echo "Top repositories:"
+    echo "$top_repos" | jq -r '.[] | "  \(.repo): \(.count) skills"'
+
+    init_preferences
+    local pins=$(jq -r '.pinned | length' "$PREFERENCES_FILE")
+    local mode=$(jq -r '.mode' "$PREFERENCES_FILE")
+    echo ""
+    echo "Preferences:"
+    echo "  Pinned skills: $pins"
+    echo "  Selection mode: $mode"
+}
+
+# Main
+cmd="${1:-help}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+    update)         cmd_update_quick "$@" ;;  # Use quick by default
+    update-full)    cmd_update "$@" ;;        # Full GitHub search
+    search|s)       cmd_search "$@" ;;
+    select)         cmd_select "$@" ;;
+    pin)            cmd_pin "$@" ;;
+    unpin)          cmd_unpin "$@" ;;
+    pins)           cmd_pins "$@" ;;
+    mode)           cmd_mode "$@" ;;
+    stats)          cmd_stats "$@" ;;
+    help|-h|--help) usage ;;
+    *)
+        log_error "Unknown command: $cmd"
+        usage
+        exit 1
+        ;;
+esac

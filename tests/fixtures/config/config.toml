@@ -1,0 +1,43 @@
+# Test configuration for LifeMaestro
+
+[maestro]
+version = "0.2.0"
+
+[zones.default]
+name = "personal"
+
+[zones.personal]
+name = "personal"
+description = "Personal projects and home tasks"
+
+[zones.personal.git]
+user = "Test User"
+email = "test@personal.example.com"
+
+[zones.personal.features]
+sdp = false
+jira = false
+github_issues = true
+
+[zones.work]
+name = "work"
+description = "Work projects"
+
+[zones.work.git]
+user = "Work User"
+email = "test@work.example.com"
+
+[zones.work.features]
+sdp = true
+jira = true
+github_issues = true
+
+[zones.work.sdp]
+base_url = "https://sdp.example.com/api/v3"
+
+[zones.work.jira]
+base_url = "https://jira.example.com"
+
+[sessions]
+base_dir = "~/ai-sessions"
+default_zone = "personal"

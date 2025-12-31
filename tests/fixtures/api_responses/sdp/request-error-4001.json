@@ -1,0 +1,13 @@
+{
+  "response_status": {
+    "status_code": "4001",
+    "status": "failed",
+    "messages": [
+      {
+        "status_code": "4001",
+        "type": "failed",
+        "message": "Authentication failed. Invalid API key."
+      }
+    ]
+  }
+}

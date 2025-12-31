@@ -19,6 +19,13 @@ vendor/anthropic-skills/
 !vendor/vendor.yaml
 !vendor/sync.sh
 
+# Cache (skills index, cloned repos)
+.cache/
+
+# Test helper libraries (cloned by bin/test --setup)
+tests/test_helper/bats-support/
+tests/test_helper/bats-assert/
+
 # State files
 *.log
 *.pid

@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Mock curl for testing HTTP requests
+
+# Capture arguments for verification
+echo "$@" >> "${BATS_TEST_TMPDIR:-/tmp}/curl.calls"
+
+# Check for mock response file first
+if [[ -n "${MOCK_CURL_RESPONSE:-}" ]] && [[ -f "$MOCK_CURL_RESPONSE" ]]; then
+    cat "$MOCK_CURL_RESPONSE"
+    exit 0
+fi
+
+# Extract URL from arguments
+url=""
+for arg in "$@"; do
+    if [[ "$arg" =~ ^https?:// ]]; then
+        url="$arg"
+        break
+    fi
+done
+
+# Return mock responses based on URL patterns
+case "$url" in
+    *"jira"*"/rest/api"*"/issue/"*)
+        cat <<'EOF'
+{
+  "key": "PROJ-123",
+  "fields": {
+    "summary": "Test Jira Issue",
+    "status": {"name": "In Progress"},
+    "priority": {"name": "High"},
+    "assignee": {"displayName": "Test User"},
+    "reporter": {"displayName": "Reporter User"},
+    "created": "2024-01-15T10:00:00.000Z",
+    "labels": ["bug", "priority"],
+    "description": {"content": [{"content": [{"text": "Test description"}]}]}
+  }
+}
+EOF
+        ;;
+    *"api.github.com"*"/issues"*)
+        cat <<'EOF'
+{
+  "number": 123,
+  "title": "Test GitHub Issue",
+  "state": "open",
+  "body": "Test description",
+  "user": {"login": "testuser"},
+  "labels": [{"name": "bug"}]
+}
+EOF
+        ;;
+    *"api.github.com"*"/repos/"*)
+        cat <<'EOF'
+{
+  "number": 123,
+  "title": "Test GitHub Issue",
+  "state": "open",
+  "body": "Test description"
+}
+EOF
+        ;;
+    *"sdp"*"/requests/"*)
+        cat <<'EOF'
+{
+  "response_status": {"status_code": "2000"},
+  "request": {
+    "id": "12345",
+    "subject": "Test SDP Request",
+    "status": {"name": "Open"},
+    "priority": {"name": "High"},
+    "requester": {"name": "Test User"}
+  }
+}
+EOF
+        ;;
+    *"api.linear.app"*)
+        cat <<'EOF'
+{
+  "data": {
+    "issue": {
+      "identifier": "LIN-123",
+      "title": "Test Linear Issue",
+      "state": {"name": "In Progress"},
+      "priority": 2,
+      "assignee": {"name": "Test User"}
+    }
+  }
+}
+EOF
+        ;;
+    *"dev.azure.com"*)
+        cat <<'EOF'
+{
+  "id": 12345,
+  "fields": {
+    "System.Title": "Test Azure DevOps Work Item",
+    "System.State": "Active",
+    "System.AssignedTo": {"displayName": "Test User"}
+  }
+}
+EOF
+        ;;
+    *)
+        echo '{"error": "Mock: Unknown URL pattern"}'
+        exit 1
+        ;;
+esac

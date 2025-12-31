@@ -1,0 +1,13 @@
+{
+  "response_status": {
+    "status_code": "4000",
+    "status": "failed",
+    "messages": [
+      {
+        "status_code": "4000",
+        "type": "failed",
+        "message": "Request not found."
+      }
+    ]
+  }
+}
