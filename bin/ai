@@ -48,11 +48,19 @@ declare -A CLIENT_CONTEXT_FLAGS=(
     [aider]="--read CONVENTIONS.md"  # Needs explicit flag
 )
 
+# Map clients to providers
+declare -A CLIENT_PROVIDERS=(
+    [claude]="anthropic"
+    [gemini]="google"
+    [codex]="openai"
+    [aider]=""  # Aider uses its own config
+)
+
 usage() {
     cat <<EOF
 ai - Multi-client AI session launcher
 
-Usage: ai <client> [client-args...]
+Usage: ai <client> [--via <method>] [client-args...]
 
 Clients:
     claude      Claude Code (Anthropic)
@@ -60,20 +68,35 @@ Clients:
     codex       Codex CLI (OpenAI)
     aider       Aider (multi-model)
 
+Options:
+    --via <method>  Access method: oauth, api, bedrock, vertex, azure
+                    (See 'ai-access status' for available methods)
+
 Features:
     - Automatic transcript logging to transcripts/
     - Client usage tracking in .session.json
     - Shared context via CONTEXT.md symlinks
+    - Clean auth switching between OAuth/API/Cloud
 
 Examples:
-    ai claude                    # Start Claude Code with logging
-    ai gemini                    # Start Gemini CLI with logging
+    ai claude                    # Start Claude with default access (oauth)
+    ai claude --via bedrock      # Start Claude with AWS Bedrock
+    ai claude --via api          # Start Claude with API key
+    ai gemini --via vertex       # Start Gemini with GCP Vertex AI
     ai aider --model claude-3   # Start Aider with specific model
-    ai codex --help              # Pass args to codex
+
+Access Methods:
+    anthropic:  oauth, api, bedrock
+    google:     oauth, api, vertex
+    openai:     api, azure
 
 Environment:
     MAESTRO_ROOT    Config directory (default: ~/.config/lifemaestro)
     AI_NO_LOG       Set to 1 to disable transcript logging
+
+See also:
+    ai-access status            # Show current access configuration
+    ai-access <provider> <method>  # Set default access method
 EOF
 }
 
@@ -140,6 +163,39 @@ get_transcript_file() {
     echo "transcripts/${timestamp}-${client}.log"
 }
 
+# Setup access method environment
+setup_access_env() {
+    local provider="$1"
+    local method="$2"
+
+    if [[ -z "$provider" ]]; then
+        return 0
+    fi
+
+    local ai_access_cmd="${MAESTRO_ROOT}/../bin/ai-access"
+    if [[ ! -x "$ai_access_cmd" ]]; then
+        ai_access_cmd="ai-access"
+    fi
+
+    if ! command_exists "$ai_access_cmd" && [[ ! -x "$ai_access_cmd" ]]; then
+        log_warn "ai-access not found, skipping environment setup"
+        return 0
+    fi
+
+    # Get environment setup commands
+    local env_setup
+    if [[ -n "$method" ]]; then
+        env_setup=$("$ai_access_cmd" env "$provider" "$method" 2>/dev/null)
+    else
+        env_setup=$("$ai_access_cmd" env "$provider" 2>/dev/null)
+    fi
+
+    # Apply environment
+    eval "$env_setup"
+
+    log_info "Access: $provider via ${method:-default}"
+}
+
 # Main
 main() {
     local client="${1:-}"
@@ -158,9 +214,29 @@ main() {
         exit 1
     fi
 
+    # Parse --via flag
+    local via_method=""
+    local client_args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --via)
+                via_method="${2:-}"
+                shift 2 || { log_error "--via requires a method"; exit 1; }
+                ;;
+            *)
+                client_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
     local cmd="${CLIENT_COMMANDS[$client]}"
     local context_file="${CLIENT_CONTEXT_FILES[$client]}"
     local context_flags="${CLIENT_CONTEXT_FLAGS[$client]}"
+    local provider="${CLIENT_PROVIDERS[$client]:-}"
+
+    # Setup access environment (clears conflicting auth, sets correct method)
+    setup_access_env "$provider" "$via_method"
 
     # Check if client command exists
     if ! command_exists "$cmd"; then
@@ -192,9 +268,9 @@ main() {
         full_cmd="$cmd $context_flags"
     fi
 
-    # Add user's additional args
-    if [[ $# -gt 0 ]]; then
-        full_cmd="$full_cmd $*"
+    # Add user's additional args (after parsing --via)
+    if [[ ${#client_args[@]} -gt 0 ]]; then
+        full_cmd="$full_cmd ${client_args[*]}"
     fi
 
     if [[ "$do_log" == "true" ]]; then
