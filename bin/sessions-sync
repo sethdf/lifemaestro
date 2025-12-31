@@ -50,8 +50,12 @@ cmd_init() {
     
     git init
     
-    # Create .gitignore
+    # Create .gitignore - transcripts excluded by default (may contain secrets)
     cat > .gitignore << 'EOF'
+# Transcripts - excluded by default (may contain secrets like API keys)
+# Remove this line if using git-crypt encryption
+**/transcripts/
+
 # Temporary files
 *.tmp
 *.swp
@@ -61,8 +65,7 @@ cmd_init() {
 .DS_Store
 Thumbs.db
 
-# Don't ignore transcripts - we want them backed up!
-# But ignore any local tool caches
+# Local tool caches
 .aider*
 .codex*
 EOF

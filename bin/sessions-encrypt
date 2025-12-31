@@ -87,10 +87,20 @@ CONTEXT.md !filter !diff
 *.md !filter !diff
 EOF
     
+    # Remove transcripts from .gitignore since they'll be encrypted
+    if [[ -f .gitignore ]] && grep -q "transcripts" .gitignore; then
+        log_info "Enabling transcript backup (now encrypted)..."
+        sed -i '/\*\*\/transcripts\//d' .gitignore
+        sed -i '/^# Transcripts - excluded/d' .gitignore
+        sed -i '/^# Remove this line if using/d' .gitignore
+        git add .gitignore
+    fi
+
     git add .gitattributes
     git commit -m "Configure git-crypt for transcript encryption"
-    
+
     log_ok "git-crypt initialized!"
+    log_ok "Transcripts will now be encrypted and backed up"
     echo ""
     echo "Next steps:"
     echo "  1. Add your GPG key: sessions-encrypt add-key your@email.com"
