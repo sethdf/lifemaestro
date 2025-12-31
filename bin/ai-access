@@ -43,7 +43,7 @@ declare -A GOOGLE_ACCESS=(
 
 # OpenAI access methods
 declare -A OPENAI_ACCESS=(
-    [oauth]="ChatGPT OAuth (Plus/Team subscription)"
+    [oauth]="Codex OAuth (Plus/Pro/Team subscription)"
     [api]="API Key (platform.openai.com)"
     [azure]="Azure OpenAI"
 )
@@ -160,6 +160,17 @@ EOF
             # Gemini CLI typically uses gcloud ADC, not a separate token file
             echo "# Google OAuth managed via gcloud"
             ;;
+        openai)
+            # Codex auth locations
+            for f in ~/.codex/auth.json ~/.config/codex/auth.json; do
+                cat <<EOF
+if [[ -f "$f" ]] && [[ ! -f "$f.disabled" ]]; then
+    mv "$f" "$f.disabled"
+    echo "# Disabled OAuth: $f"
+fi
+EOF
+            done
+            ;;
     esac
 }
 
@@ -170,6 +181,16 @@ output_enable_oauth() {
     case "$provider" in
         anthropic)
             for f in ~/.claude/auth.json ~/.config/claude/auth.json ~/.claude.json; do
+                cat <<EOF
+if [[ -f "$f.disabled" ]]; then
+    mv "$f.disabled" "$f"
+    echo "# Enabled OAuth: $f"
+fi
+EOF
+            done
+            ;;
+        openai)
+            for f in ~/.codex/auth.json ~/.config/codex/auth.json; do
                 cat <<EOF
 if [[ -f "$f.disabled" ]]; then
     mv "$f.disabled" "$f"
@@ -275,7 +296,12 @@ output_env_setup() {
             [[ -n "$project" ]] && echo "export CLOUDSDK_CORE_PROJECT='$project'"
             echo "# Using GCP Vertex AI"
             ;;
+        openai:oauth)
+            output_enable_oauth openai
+            echo "# Using Codex OAuth (Plus/Pro/Team)"
+            ;;
         openai:api)
+            output_disable_oauth openai
             local key
             if key=$(get_credential openai api 2>/dev/null); then
                 echo "export OPENAI_API_KEY='$key'"
@@ -284,6 +310,7 @@ output_env_setup() {
             fi
             ;;
         openai:azure)
+            output_disable_oauth openai
             echo "# Azure OpenAI - set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY"
             ;;
         *)
@@ -385,6 +412,21 @@ check_access() {
                 return 1
             fi
             ;;
+        openai:oauth)
+            if command -v codex &>/dev/null; then
+                # Check if logged in via codex login status
+                if codex login status 2>/dev/null | grep -q "Logged in"; then
+                    log_ok "Codex OAuth: authenticated"
+                    return 0
+                else
+                    log_warn "Codex OAuth: not logged in (run 'codex login --device-auth')"
+                    return 1
+                fi
+            else
+                log_error "Codex CLI: not installed"
+                return 1
+            fi
+            ;;
         openai:api)
             if [[ -n "${OPENAI_API_KEY:-}" ]]; then
                 local status
@@ -400,6 +442,15 @@ check_access() {
                 fi
             else
                 log_error "OpenAI API: no key set"
+                return 1
+            fi
+            ;;
+        openai:azure)
+            if [[ -n "${AZURE_OPENAI_ENDPOINT:-}" ]] && [[ -n "${AZURE_OPENAI_API_KEY:-}" ]]; then
+                log_ok "Azure OpenAI: configured"
+                return 0
+            else
+                log_error "Azure OpenAI: missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY"
                 return 1
             fi
             ;;
@@ -438,7 +489,7 @@ cmd_status() {
                 done
                 ;;
             openai)
-                for method in api azure; do
+                for method in oauth api azure; do
                     check_method_status "$provider" "$method" "$default_method"
                 done
                 ;;
@@ -483,6 +534,12 @@ check_method_status() {
         google:vertex)
             gcloud auth application-default print-access-token &>/dev/null 2>&1 && status="✅"
             ;;
+        openai:oauth)
+            for f in ~/.codex/auth.json ~/.config/codex/auth.json; do
+                [[ -f "$f" ]] && { status="✅"; break; }
+            done
+            [[ -f ~/.codex/auth.json.disabled ]] && status="⏸️ "
+            ;;
         openai:api)
             [[ -n "${OPENAI_API_KEY_STORED:-}" ]] && status="✅"
             ;;
@@ -526,7 +583,7 @@ main() {
                 case "$provider" in
                     anthropic) echo "  oauth, api, bedrock" ;;
                     google)    echo "  oauth, api, vertex" ;;
-                    openai)    echo "  api, azure" ;;
+                    openai)    echo "  oauth, api, azure" ;;
                 esac
             else
                 set_default_access "$provider" "$method"
