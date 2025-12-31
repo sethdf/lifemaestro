@@ -15,6 +15,14 @@
 - [x] Added MCP server configuration (.claude/mcp.json, docs/mcp-setup.md)
 - [x] Created hooks for common workflows (.claude/hooks/, docs/hooks.md)
 
+## Future
+
+- [ ] **Step 6 Automation (Iterate)** - Currently just guidance, could automate:
+  - Track skill usage (which skills triggered, frequency)
+  - Log skill failures or poor results
+  - Suggest improvements based on usage patterns
+  - Requires: hooks into skill invocation, feedback mechanism, analytics
+
 ## Architecture Complete
 
 ```
