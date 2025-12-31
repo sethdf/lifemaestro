@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# sessions-sync - Sync sessions to git backup
+# Usage: sessions-sync [init|push|status]
+
+set -euo pipefail
+
+SESSIONS_BASE="${SESSIONS_BASE:-$HOME/ai-sessions}"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info()  { echo -e "${BLUE}▶${NC} $*"; }
+log_ok()    { echo -e "${GREEN}✓${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}!${NC} $*" >&2; }
+log_error() { echo -e "${RED}✗${NC} $*" >&2; }
+
+usage() {
+    cat <<EOF
+sessions-sync - Sync AI sessions to git backup
+
+Usage: sessions-sync <command>
+
+Commands:
+    init              Initialize sessions directory as git repo
+    push              Commit and push all changes
+    status            Show git status
+    setup-remote      Configure GitHub remote (interactive)
+
+Examples:
+    sessions-sync init           # First-time setup
+    sessions-sync push           # Commit and backup all sessions
+    sessions-sync status         # See what's changed
+EOF
+}
+
+cmd_init() {
+    log_info "Initializing sessions repository..."
+    
+    mkdir -p "$SESSIONS_BASE"
+    cd "$SESSIONS_BASE"
+    
+    if [[ -d ".git" ]]; then
+        log_warn "Git repo already exists at $SESSIONS_BASE"
+        return 0
+    fi
+    
+    git init
+    
+    # Create .gitignore
+    cat > .gitignore << 'EOF'
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Don't ignore transcripts - we want them backed up!
+# But ignore any local tool caches
+.aider*
+.codex*
+EOF
+    
+    # Create README
+    cat > README.md << 'EOF'
+# AI Sessions
+
+This repository contains AI coding session transcripts and context.
+
+## Structure
+
+```
+ai-sessions/
+├── work/           # Work-related sessions
+│   └── tickets/    # Ticket-based sessions
+├── personal/       # Personal projects
+│   └── learning/   # Learning sessions
+└── infra/          # Infrastructure work
+```
+
+## Session Contents
+
+Each session directory contains:
+- `CONTEXT.md` - Shared context for all AI clients
+- `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, `CONVENTIONS.md` - Symlinks to CONTEXT.md
+- `.session.json` - Session metadata (timestamps, tags, skills/models/clients used)
+- `transcripts/` - Full conversation logs
+
+## Privacy
+
+This repo may contain sensitive information. Keep it private!
+EOF
+    
+    git add .
+    git commit -m "Initial sessions repository setup"
+    
+    log_ok "Sessions repository initialized at $SESSIONS_BASE"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Create a private GitHub repo: gh repo create ai-sessions --private"
+    echo "  2. Run: sessions-sync setup-remote"
+}
+
+cmd_push() {
+    cd "$SESSIONS_BASE"
+    
+    if [[ ! -d ".git" ]]; then
+        log_error "Not a git repository. Run 'sessions-sync init' first."
+        exit 1
+    fi
+    
+    # Check for changes
+    if git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --others --exclude-standard)" ]]; then
+        log_info "No changes to sync"
+        return 0
+    fi
+    
+    log_info "Syncing sessions..."
+    
+    # Add all changes
+    git add -A
+    
+    # Create commit message with summary
+    local changed_files=$(git diff --cached --name-only | wc -l)
+    local timestamp=$(date +"%Y-%m-%d %H:%M")
+    
+    git commit -m "Session sync: $timestamp ($changed_files files)"
+    
+    # Push if remote exists
+    if git remote get-url origin &>/dev/null; then
+        git push
+        log_ok "Pushed to remote"
+    else
+        log_warn "No remote configured. Changes committed locally only."
+        echo "Run 'sessions-sync setup-remote' to configure GitHub backup"
+    fi
+}
+
+cmd_status() {
+    cd "$SESSIONS_BASE"
+    
+    if [[ ! -d ".git" ]]; then
+        log_error "Not a git repository. Run 'sessions-sync init' first."
+        exit 1
+    fi
+    
+    echo "Sessions directory: $SESSIONS_BASE"
+    echo ""
+    git status
+}
+
+cmd_setup_remote() {
+    cd "$SESSIONS_BASE"
+    
+    if [[ ! -d ".git" ]]; then
+        log_error "Not a git repository. Run 'sessions-sync init' first."
+        exit 1
+    fi
+    
+    if git remote get-url origin &>/dev/null; then
+        log_warn "Remote already configured: $(git remote get-url origin)"
+        read -p "Replace? [y/N] " confirm
+        [[ "$confirm" != "y" ]] && exit 0
+        git remote remove origin
+    fi
+    
+    echo "Enter your GitHub repo URL (e.g., git@github.com:username/ai-sessions.git):"
+    read -p "> " remote_url
+    
+    if [[ -z "$remote_url" ]]; then
+        log_error "No URL provided"
+        exit 1
+    fi
+    
+    git remote add origin "$remote_url"
+    git branch -M main
+    git push -u origin main
+    
+    log_ok "Remote configured and pushed!"
+}
+
+# Main
+case "${1:-}" in
+    init)
+        cmd_init
+        ;;
+    push|sync)
+        cmd_push
+        ;;
+    status|st)
+        cmd_status
+        ;;
+    setup-remote|remote)
+        cmd_setup_remote
+        ;;
+    -h|--help|help|"")
+        usage
+        ;;
+    *)
+        log_error "Unknown command: $1"
+        usage
+        exit 1
+        ;;
+esac

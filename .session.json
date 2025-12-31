@@ -38,5 +38,14 @@
       "last_used": "2025-12-31T04:59:01Z"
     }
   ],
-  "primary_model": "claude-opus-4-20250514"
+  "primary_model": "claude-opus-4-20250514",
+  "clients_used": [
+    {
+      "client": "claude",
+      "invocations": 1,
+      "first_used": "2025-12-31T05:29:52Z",
+      "last_used": "2025-12-31T05:29:52Z"
+    }
+  ],
+  "primary_client": "claude"
 }

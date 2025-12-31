@@ -35,7 +35,9 @@ session::metadata_init() {
   "learnings": [],
   "skills_used": [],
   "models_used": [],
+  "clients_used": [],
   "primary_model": null,
+  "primary_client": null,
   "summary": null
 }
 EOF
@@ -345,6 +347,76 @@ session::get_models() {
 session::get_primary_model() {
     local session_dir="$1"
     session::metadata_get "$session_dir" "primary_model"
+}
+
+# Track client usage in session
+# Usage: session::track_client <session_dir> <client_name>
+session::track_client() {
+    local session_dir="$1"
+    local client_name="$2"
+    local metadata_file="$session_dir/$SESSION_METADATA_FILE"
+
+    if [[ ! -f "$metadata_file" ]]; then
+        return 1
+    fi
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    local now
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    # Check if client already tracked, increment count or add new
+    # Also update primary_client to the most-used client
+    jq --arg client "$client_name" --arg now "$now" '
+        # Ensure clients_used exists
+        .clients_used //= []
+        # Update or add client
+        | if (.clients_used | map(.client) | index($client)) then
+            .clients_used |= map(
+                if .client == $client then
+                    .invocations += 1 | .last_used = $now
+                else
+                    .
+                end
+            )
+        else
+            .clients_used += [{
+                "client": $client,
+                "invocations": 1,
+                "first_used": $now,
+                "last_used": $now
+            }]
+        end
+        # Set primary_client to most-used
+        | .primary_client = (.clients_used | max_by(.invocations) | .client)
+    ' "$metadata_file" > "$tmp_file"
+
+    mv "$tmp_file" "$metadata_file"
+}
+
+# Get clients used in session
+# Usage: session::get_clients <session_dir>
+session::get_clients() {
+    local session_dir="$1"
+    local metadata_file="$session_dir/$SESSION_METADATA_FILE"
+
+    if [[ -f "$metadata_file" ]] && command -v jq &>/dev/null; then
+        jq -r '.clients_used // []' "$metadata_file"
+    else
+        echo "[]"
+    fi
+}
+
+# Get primary client for session
+# Usage: session::get_primary_client <session_dir>
+session::get_primary_client() {
+    local session_dir="$1"
+    session::metadata_get "$session_dir" "primary_client"
 }
 
 # Get session age in days

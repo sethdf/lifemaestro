@@ -143,8 +143,30 @@ case "$cmd" in
                     cli::out "  Models used: $models_count (primary: $primary)"
                     jq -r '.models_used[] | "    - \(.model) (\(.invocations)x)"' .session.json 2>/dev/null
                 fi
+
+                # Show clients used
+                clients_count=$(jq -r '.clients_used | length' .session.json 2>/dev/null || echo "0")
+                if [[ "$clients_count" -gt 0 ]]; then
+                    primary_client=$(jq -r '.primary_client // "none"' .session.json)
+                    cli::out "  Clients used: $clients_count (primary: $primary_client)"
+                    jq -r '.clients_used[] | "    - \(.client) (\(.invocations)x)"' .session.json 2>/dev/null
+                fi
             fi
         fi
+        ;;
+    track-client)
+        # Track client usage in current session
+        client_name="${1:-}"
+        if [[ -z "$client_name" ]]; then
+            cli::die_usage "Usage: session track-client <client-name>"
+        fi
+        if [[ ! -f ".session.json" ]]; then
+            cli::warn "No .session.json in current directory"
+            exit 0
+        fi
+        source "$MAESTRO_ROOT/sessions/schema.sh"
+        session::track_client "." "$client_name"
+        cli::out "Tracked client: $client_name"
         ;;
     track-model)
         # Track model usage in current session
@@ -216,6 +238,7 @@ case "$cmd" in
         cli::out "    compact              Archive CLAUDE.md"
         cli::out "    done                 Quick close without AI analysis"
         cli::out "    status               Show current status"
+        cli::out "    track-client <name>  Track AI client usage in session"
         cli::out "    track-model <name>   Track model usage in session"
         cli::out "    track-skill <name>   Track skill usage in session"
         cli::out "    migrate [--dry-run]  Add .session.json to existing sessions"

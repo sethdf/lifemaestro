@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# sessions-encrypt - Set up git-crypt encryption for session transcripts
+# Usage: sessions-encrypt [init|status|add-key]
+
+set -euo pipefail
+
+SESSIONS_BASE="${SESSIONS_BASE:-$HOME/ai-sessions}"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info()  { echo -e "${BLUE}▶${NC} $*"; }
+log_ok()    { echo -e "${GREEN}✓${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}!${NC} $*" >&2; }
+log_error() { echo -e "${RED}✗${NC} $*" >&2; }
+
+usage() {
+    cat <<EOF
+sessions-encrypt - Encrypt session transcripts with git-crypt
+
+Usage: sessions-encrypt <command>
+
+Commands:
+    init              Initialize git-crypt for transcripts
+    status            Show encryption status
+    add-key <gpg-id>  Add a GPG key for decryption
+    export-key        Export symmetric key for backup
+
+Prerequisites:
+    - git-crypt installed (brew install git-crypt / apt install git-crypt)
+    - GPG key for your identity
+
+What gets encrypted:
+    - transcripts/*.log  (conversation logs)
+    - .session.json files remain unencrypted (metadata only)
+
+Examples:
+    sessions-encrypt init                    # First-time setup
+    sessions-encrypt add-key user@email.com  # Add team member
+    sessions-encrypt status                  # Check what's encrypted
+EOF
+}
+
+check_git_crypt() {
+    if ! command -v git-crypt &>/dev/null; then
+        log_error "git-crypt not installed"
+        echo ""
+        echo "Install with:"
+        echo "  macOS:  brew install git-crypt"
+        echo "  Ubuntu: sudo apt install git-crypt"
+        echo "  Arch:   sudo pacman -S git-crypt"
+        exit 1
+    fi
+}
+
+cmd_init() {
+    check_git_crypt
+    
+    cd "$SESSIONS_BASE"
+    
+    if [[ ! -d ".git" ]]; then
+        log_error "Not a git repository. Run 'sessions-sync init' first."
+        exit 1
+    fi
+    
+    if [[ -d ".git-crypt" ]]; then
+        log_warn "git-crypt already initialized"
+        return 0
+    fi
+    
+    log_info "Initializing git-crypt..."
+    git-crypt init
+    
+    # Create .gitattributes for encryption rules
+    cat > .gitattributes << 'EOF'
+# Encrypt all transcript files
+**/transcripts/*.log filter=git-crypt diff=git-crypt
+**/transcripts/*.txt filter=git-crypt diff=git-crypt
+
+# Keep metadata readable (for searching/filtering)
+.session.json !filter !diff
+CONTEXT.md !filter !diff
+*.md !filter !diff
+EOF
+    
+    git add .gitattributes
+    git commit -m "Configure git-crypt for transcript encryption"
+    
+    log_ok "git-crypt initialized!"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Add your GPG key: sessions-encrypt add-key your@email.com"
+    echo "  2. Export backup key: sessions-encrypt export-key > ~/key-backup.txt"
+    echo ""
+    echo "Encrypted files: **/transcripts/*.log"
+}
+
+cmd_status() {
+    check_git_crypt
+    
+    cd "$SESSIONS_BASE"
+    
+    if [[ ! -d ".git-crypt" ]]; then
+        log_warn "git-crypt not initialized. Run 'sessions-encrypt init' first."
+        exit 1
+    fi
+    
+    echo "Encryption status:"
+    git-crypt status
+}
+
+cmd_add_key() {
+    check_git_crypt
+    
+    local gpg_id="${1:-}"
+    if [[ -z "$gpg_id" ]]; then
+        log_error "Usage: sessions-encrypt add-key <gpg-id>"
+        echo "gpg-id can be email, key ID, or fingerprint"
+        exit 1
+    fi
+    
+    cd "$SESSIONS_BASE"
+    
+    if [[ ! -d ".git-crypt" ]]; then
+        log_error "git-crypt not initialized. Run 'sessions-encrypt init' first."
+        exit 1
+    fi
+    
+    log_info "Adding GPG key: $gpg_id"
+    git-crypt add-gpg-user "$gpg_id"
+    
+    log_ok "Key added! They can now clone and decrypt."
+}
+
+cmd_export_key() {
+    check_git_crypt
+    
+    cd "$SESSIONS_BASE"
+    
+    if [[ ! -d ".git-crypt" ]]; then
+        log_error "git-crypt not initialized"
+        exit 1
+    fi
+    
+    log_warn "KEEP THIS KEY SAFE - it decrypts all transcripts!"
+    echo ""
+    git-crypt export-key /dev/stdout | base64
+}
+
+# Main
+case "${1:-}" in
+    init)
+        cmd_init
+        ;;
+    status|st)
+        cmd_status
+        ;;
+    add-key|add)
+        shift
+        cmd_add_key "$@"
+        ;;
+    export-key|export)
+        cmd_export_key
+        ;;
+    -h|--help|help|"")
+        usage
+        ;;
+    *)
+        log_error "Unknown command: $1"
+        usage
+        exit 1
+        ;;
+esac

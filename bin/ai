@@ -1,145 +1,232 @@
 #!/usr/bin/env bash
-# ai - Unified AI interface
-# 12-Factor CLI compliant
+# ai - Multi-client AI session launcher with transcript logging
+# Usage: ai [client] [args...]
+#
+# Supported clients: claude, gemini, codex, aider
+#
+# This wrapper:
+# 1. Detects/creates session context
+# 2. Logs the full conversation transcript
+# 3. Tracks client usage in .session.json
 
 set -euo pipefail
 
 MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
 
-source "$MAESTRO_ROOT/core/init.sh"
-maestro::init 2>/dev/null || true
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+DIM='\033[2m'
+NC='\033[0m'
 
-# Parse common flags
-cli::parse_common_flags "$@"
-set -- "${MAESTRO_ARGS[@]}"
+log_info()  { echo -e "${BLUE}▶${NC} $*"; }
+log_ok()    { echo -e "${GREEN}✓${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}!${NC} $*" >&2; }
+log_error() { echo -e "${RED}✗${NC} $*" >&2; }
 
-cmd="${1:-chat}"
-shift || true
+# Supported clients and their commands
+declare -A CLIENT_COMMANDS=(
+    [claude]="claude"
+    [gemini]="gemini"
+    [codex]="codex"
+    [aider]="aider"
+)
 
-case "$cmd" in
-    # ============================================
-    # MAIN COMMANDS
-    # ============================================
-    chat|c)
-        session::ai "${@}"
-        ;;
-    ask|a)
-        if [[ $# -eq 0 ]]; then
-            # Check for stdin
-            if cli::has_stdin; then
-                input=$(cat)
-                skill::ai_oneshot "$input"
-            else
-                cli::die_usage "Usage: ai ask <question>"
-            fi
+declare -A CLIENT_CONTEXT_FILES=(
+    [claude]="CLAUDE.md"
+    [gemini]="GEMINI.md"
+    [codex]="AGENTS.md"
+    [aider]="CONVENTIONS.md"
+)
+
+declare -A CLIENT_CONTEXT_FLAGS=(
+    [claude]=""  # Auto-reads CLAUDE.md
+    [gemini]=""  # Auto-reads GEMINI.md
+    [codex]=""   # Auto-reads AGENTS.md
+    [aider]="--read CONVENTIONS.md"  # Needs explicit flag
+)
+
+usage() {
+    cat <<EOF
+ai - Multi-client AI session launcher
+
+Usage: ai <client> [client-args...]
+
+Clients:
+    claude      Claude Code (Anthropic)
+    gemini      Gemini CLI (Google)
+    codex       Codex CLI (OpenAI)
+    aider       Aider (multi-model)
+
+Features:
+    - Automatic transcript logging to transcripts/
+    - Client usage tracking in .session.json
+    - Shared context via CONTEXT.md symlinks
+
+Examples:
+    ai claude                    # Start Claude Code with logging
+    ai gemini                    # Start Gemini CLI with logging
+    ai aider --model claude-3   # Start Aider with specific model
+    ai codex --help              # Pass args to codex
+
+Environment:
+    MAESTRO_ROOT    Config directory (default: ~/.config/lifemaestro)
+    AI_NO_LOG       Set to 1 to disable transcript logging
+EOF
+}
+
+# Check if a command exists
+command_exists() {
+    command -v "$1" &>/dev/null
+}
+
+# Track client usage in .session.json
+track_client() {
+    local client="$1"
+
+    if [[ ! -f ".session.json" ]]; then
+        return 0
+    fi
+
+    if ! command_exists jq; then
+        return 0
+    fi
+
+    local now
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    # Update or add client tracking
+    jq --arg client "$client" --arg now "$now" '
+        # Ensure clients_used exists
+        .clients_used //= []
+        # Update or add client
+        | if (.clients_used | map(.client) | index($client)) then
+            .clients_used |= map(
+                if .client == $client then
+                    .invocations += 1 | .last_used = $now
+                else
+                    .
+                end
+            )
         else
-            skill::ai_oneshot "$*"
+            .clients_used += [{
+                "client": $client,
+                "invocations": 1,
+                "first_used": $now,
+                "last_used": $now
+            }]
+        end
+        # Set primary_client to most-used
+        | .primary_client = (.clients_used | max_by(.invocations) | .client)
+    ' .session.json > "$tmp_file" 2>/dev/null || return 0
+
+    mv "$tmp_file" .session.json
+}
+
+# Get transcript filename
+get_transcript_file() {
+    local client="$1"
+    local timestamp
+    timestamp=$(date +"%Y-%m-%dT%H-%M-%S")
+
+    # Ensure transcripts directory exists
+    mkdir -p transcripts
+
+    echo "transcripts/${timestamp}-${client}.log"
+}
+
+# Main
+main() {
+    local client="${1:-}"
+    shift || true
+
+    # Handle help
+    if [[ "$client" == "-h" ]] || [[ "$client" == "--help" ]] || [[ -z "$client" ]]; then
+        usage
+        exit 0
+    fi
+
+    # Validate client
+    if [[ -z "${CLIENT_COMMANDS[$client]:-}" ]]; then
+        log_error "Unknown client: $client"
+        echo "Supported clients: ${!CLIENT_COMMANDS[*]}"
+        exit 1
+    fi
+
+    local cmd="${CLIENT_COMMANDS[$client]}"
+    local context_file="${CLIENT_CONTEXT_FILES[$client]}"
+    local context_flags="${CLIENT_CONTEXT_FLAGS[$client]}"
+
+    # Check if client command exists
+    if ! command_exists "$cmd"; then
+        log_error "Client not installed: $cmd"
+        echo "Install $client and ensure '$cmd' is in your PATH"
+        exit 1
+    fi
+
+    # Check for context file (session detection)
+    if [[ -f "$context_file" ]] || [[ -L "$context_file" ]]; then
+        log_info "Session detected: $context_file"
+    else
+        log_warn "No session context found ($context_file)"
+        log_warn "Run 'session new' to create a session, or continue without context"
+    fi
+
+    # Track client usage
+    track_client "$client"
+
+    # Determine if logging is enabled
+    local do_log=true
+    if [[ "${AI_NO_LOG:-}" == "1" ]]; then
+        do_log=false
+    fi
+
+    # Build command with any extra flags
+    local full_cmd="$cmd"
+    if [[ -n "$context_flags" ]]; then
+        full_cmd="$cmd $context_flags"
+    fi
+
+    # Add user's additional args
+    if [[ $# -gt 0 ]]; then
+        full_cmd="$full_cmd $*"
+    fi
+
+    if [[ "$do_log" == "true" ]]; then
+        local transcript_file
+        transcript_file=$(get_transcript_file "$client")
+
+        log_info "Starting $client with transcript logging"
+        log_info "Transcript: $transcript_file"
+        echo ""
+
+        # Use script command to capture full terminal session
+        # -q: quiet, -f: flush output, -c: command to run
+        if [[ "$(uname)" == "Darwin" ]]; then
+            # macOS script syntax
+            script -q "$transcript_file" $full_cmd
+        else
+            # Linux script syntax
+            script -q -f -c "$full_cmd" "$transcript_file"
         fi
-        ;;
-    code)
-        provider=$(maestro::config 'ai.default_code_provider' 'claude')
-        session::ai "$provider" "$@"
-        ;;
 
-    # ============================================
-    # PROVIDER MANAGEMENT
-    # ============================================
-    list|ls)
-        cli::out "AI Providers:"
-        cli::out ""
-        cli::out "  CLI Tools:"
-        for tool in claude openai ollama gemini aider llm q gh-copilot fabric mistral; do
-            binary="$tool"
-            [[ "$tool" == "q" ]] && binary="q"
-            [[ "$tool" == "gh-copilot" ]] && binary="gh"
+        log_ok "Session ended. Transcript saved: $transcript_file"
 
-            if command -v "$binary" &>/dev/null; then
-                cli::out "    ✅ $tool"
-            else
-                cli::out "    ⚪ $tool (not installed)"
-            fi
-        done
-        ;;
-    use)
-        if [[ $# -eq 0 ]]; then
-            cli::die_usage "Usage: ai use <provider>"
+        # Strip ANSI codes from transcript for cleaner git diffs
+        if command_exists sed; then
+            sed -i 's/\x1b\[[0-9;]*m//g' "$transcript_file" 2>/dev/null || true
+            sed -i 's/\x1b\[[0-9;]*[a-zA-Z]//g' "$transcript_file" 2>/dev/null || true
         fi
-        provider="$1"
-        cli::atomic_write "$MAESTRO_ROOT/config.local.toml" "ai.default_provider = \"$provider\""
-        cli::success "Default provider set to: $provider"
-        ;;
-    which)
-        cli::out "Default provider: $(maestro::config 'ai.default_provider' 'claude')"
-        cli::out "Code provider: $(maestro::config 'ai.default_code_provider' 'claude')"
-        cli::out "Fast provider: $(maestro::config 'ai.default_fast_provider' 'ollama')"
-        ;;
+    else
+        log_info "Starting $client (logging disabled)"
+        echo ""
+        exec $full_cmd
+    fi
+}
 
-    # ============================================
-    # DIRECT PASSTHROUGH
-    # ============================================
-    claude)
-        exec claude "$@"
-        ;;
-    ollama)
-        exec ollama "$@"
-        ;;
-    aider)
-        exec aider "$@"
-        ;;
-    llm)
-        exec llm "$@"
-        ;;
-    q)
-        exec q "$@"
-        ;;
-    copilot)
-        exec gh copilot "$@"
-        ;;
-    fabric)
-        exec fabric "$@"
-        ;;
-
-    # ============================================
-    # HELP
-    # ============================================
-    version|-v|--version)
-        cli::out "ai (lifemaestro) $MAESTRO_VERSION"
-        exit $EXIT_SUCCESS
-        ;;
-    help|--help|-h)
-        cli::out "ai - Unified AI Interface"
-        cli::out ""
-        cli::out "Usage: ai [options] <command> [args...]"
-        cli::out ""
-        cli::out "Options:"
-        cli::out "    -q, --quiet     Suppress non-essential output"
-        cli::out "    -v, --version   Show version"
-        cli::out "    -h, --help      Show this help"
-        cli::out ""
-        cli::out "Commands:"
-        cli::out "    chat [provider]     Start interactive chat (default)"
-        cli::out "    ask <question>      Ask a single question"
-        cli::out "    code               Start coding assistant"
-        cli::out ""
-        cli::out "    list               List available providers"
-        cli::out "    use <provider>     Set default provider"
-        cli::out "    which              Show current defaults"
-        cli::out ""
-        cli::out "Direct passthrough:"
-        cli::out "    claude, ollama, aider, llm, q, copilot, fabric"
-        cli::out ""
-        cli::out "Piping:"
-        cli::out "    echo 'question' | ai ask    # Read from stdin"
-        cli::out ""
-        cli::out "Examples:"
-        cli::out "    ai                      # Chat with default provider"
-        cli::out "    ai chat ollama          # Chat with Ollama"
-        cli::out "    ai ask \"What is 2+2?\"   # Quick question"
-        cli::out "    ai ollama run llama3.2  # Direct Ollama command"
-        exit $EXIT_SUCCESS
-        ;;
-    *)
-        # Default: treat as question if not a command
-        skill::ai_oneshot "$cmd $*"
-        ;;
-esac
+main "$@"

@@ -81,7 +81,7 @@ rules=""
 # Get user info
 git_user=$(dasel -f "$MAESTRO_CONFIG" -r toml "zones.$zone.git.user" 2>/dev/null || echo "$USER")
 
-# Generate CLAUDE.md
+# Generate CONTEXT.md (master context file for all clients)
 if [[ -f "$template_file" ]]; then
     # Template-based generation
     sed -e "s|{{NAME}}|$name|g" \
@@ -89,15 +89,15 @@ if [[ -f "$template_file" ]]; then
         -e "s|{{DATE}}|$date_prefix|g" \
         -e "s|{{CC_ENGINEER}}|$git_user|g" \
         -e "s|{{CC_CONTEXT}}|$zone|g" \
-        "$template_file" > "$session_dir/CLAUDE.md"
+        "$template_file" > "$session_dir/CONTEXT.md"
 
     # Append rules if placeholder exists
-    if grep -q "{{RULES}}" "$session_dir/CLAUDE.md"; then
-        sed -i "s|{{RULES}}|$rules|g" "$session_dir/CLAUDE.md"
+    if grep -q "{{RULES}}" "$session_dir/CONTEXT.md"; then
+        sed -i "s|{{RULES}}|$rules|g" "$session_dir/CONTEXT.md"
     fi
 else
-    # Default CLAUDE.md
-    cat > "$session_dir/CLAUDE.md" << EOF
+    # Default CONTEXT.md
+    cat > "$session_dir/CONTEXT.md" << EOF
 # ${name}
 
 **Date:** ${date_prefix}
@@ -119,6 +119,18 @@ ${rules}
 EOF
 fi
 
+# Create symlinks for each AI client
+# Claude Code uses CLAUDE.md, Gemini CLI uses GEMINI.md, etc.
+cd "$session_dir"
+ln -sf CONTEXT.md CLAUDE.md
+ln -sf CONTEXT.md GEMINI.md
+ln -sf CONTEXT.md AGENTS.md       # Codex CLI
+ln -sf CONTEXT.md CONVENTIONS.md  # Aider
+cd - > /dev/null
+
+# Create transcripts directory for conversation logs
+mkdir -p "$session_dir/transcripts"
+
 # Initialize session metadata (.session.json)
 created_timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 cat > "$session_dir/.session.json" << EOF
@@ -133,6 +145,11 @@ cat > "$session_dir/.session.json" << EOF
   "category": null,
   "outcome": null,
   "learnings": [],
+  "skills_used": [],
+  "models_used": [],
+  "clients_used": [],
+  "primary_model": null,
+  "primary_client": null,
   "summary": null
 }
 EOF
