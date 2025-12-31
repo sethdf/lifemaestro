@@ -23,6 +23,47 @@
   - Suggest improvements based on usage patterns
   - Requires: hooks into skill invocation, feedback mechanism, analytics
 
+- [ ] **Data Loss Prevention Guardrails** - System-wide guardrails to prevent data loss:
+  - Require explicit approval before destructive operations
+  - Show exactly what will be changed/deleted before proceeding
+  - Where to implement? Hooks? Rules? Core safety layer?
+  - See `.claude/rules/safety.md` for current approach
+
+- [ ] **Tailscale Network Switching by Context** - Different networks for work vs home:
+  - Auto-switch Tailscale network when zone changes
+  - Work zone → work tailnet, home zone → personal tailnet
+  - Integrate with zone-context skill
+
+- [ ] **OpenSpec/SpecKit for Software Projects** - Spec-driven development:
+  - Clone latest Fission-AI/OpenSpec for code projects
+  - `openspec/specs/` for system truth, `openspec/changes/` for proposals
+  - Native Claude Code slash command support
+  - Investigate: SpecKit (fragmented, unclear primary source)
+
+- [ ] **Self-Healing Skills & Friction Reduction** - Skills that improve themselves:
+  - Detect when skills fail or produce poor results
+  - Auto-suggest improvements to SKILL.md or scripts
+  - Track friction points and propose fixes
+  - Related to Step 6 automation above
+
+- [ ] **AI Coding with Self-Healing** - Methodologies where AI watches errors:
+  - Monitor test failures, lint errors, build failures
+  - Auto-fix common patterns without user intervention
+  - Learn from repeated fixes to prevent future issues
+  - Explore: error pattern recognition, fix libraries
+
+- [ ] **Multi-Model Query (Best Response Selection)** - Query multiple models, pick best:
+  - PAI has a skill for this (investigate: pai-research or similar)
+  - Send same prompt to Claude/Gemini/GPT, compare responses
+  - Quality scoring: accuracy, completeness, code correctness
+  - Use case: critical decisions, complex analysis
+
+- [ ] **LSP Support via lsp-ai** - Language Server Protocol integration:
+  - https://github.com/SilasMarvin/lsp-ai
+  - Better code intelligence for AI assistants
+  - Go-to-definition, find-references, hover info
+  - Could improve code navigation and understanding
+
 ## Architecture Complete
 
 ```
