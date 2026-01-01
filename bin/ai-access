@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # ai-access - Manage AI provider authentication and access methods
-# Ensures clean environment switching between OAuth, API, and Cloud access
+# Uses baton service for centralized credential management when available
 
 set -euo pipefail
 
 MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
 MAESTRO_STATE="${MAESTRO_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lifemaestro}"
 AI_ACCESS_FILE="$MAESTRO_STATE/ai-access.json"
+BATON_URL="${BATON_URL:-http://localhost:4000}"
 
 # Colors
 RED='\033[0;31m'
@@ -24,24 +25,60 @@ log_warn()  { echo -e "${YELLOW}!${NC} $*"; }
 log_error() { echo -e "${RED}✗${NC} $*" >&2; }
 
 # ============================================
+# BATON INTEGRATION
+# ============================================
+
+# Check if baton is running
+baton_available() {
+    curl -s --connect-timeout 1 "$BATON_URL/healthz" &>/dev/null
+}
+
+# Get auth status from baton
+baton_auth_status() {
+    local provider="$1"
+    curl -s "$BATON_URL/auth/status/$provider" 2>/dev/null
+}
+
+# Setup auth via baton (returns export commands)
+baton_auth_setup() {
+    local provider="$1"
+    local method="$2"
+    curl -s "$BATON_URL/auth/setup" \
+        -H "Content-Type: application/json" \
+        -d "{\"provider\":\"$provider\",\"auth_method\":\"$method\"}" 2>/dev/null
+}
+
+# Check credential readiness via baton
+baton_creds_ready() {
+    local provider="$1"
+    local response
+    response=$(curl -s -w "\n%{http_code}" "$BATON_URL/healthz/creds?provider=$provider" 2>/dev/null)
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    [[ "$http_code" == "200" ]]
+}
+
+# Get keepalive status from baton
+baton_keepalive_status() {
+    curl -s "$BATON_URL/keepalive/status" 2>/dev/null
+}
+
+# ============================================
 # ACCESS METHOD DEFINITIONS
 # ============================================
 
-# Anthropic access methods
 declare -A ANTHROPIC_ACCESS=(
     [oauth]="Claude Code OAuth (Pro/Team subscription)"
     [api]="API Key (console.anthropic.com)"
     [bedrock]="AWS Bedrock"
 )
 
-# Google access methods
 declare -A GOOGLE_ACCESS=(
     [oauth]="Google OAuth (Free/Advanced subscription)"
     [api]="API Key (aistudio.google.com)"
     [vertex]="GCP Vertex AI"
 )
 
-# OpenAI access methods
 declare -A OPENAI_ACCESS=(
     [oauth]="Codex OAuth (Plus/Pro/Team subscription)"
     [api]="API Key (platform.openai.com)"
@@ -71,11 +108,9 @@ Examples:
     ai-access google vertex             # Switch Gemini to Vertex AI
     eval "\$(ai-access env anthropic)"   # Set env for current method
 
-How it works:
-    When switching methods, conflicting auth is DISABLED to prevent confusion:
-    - Switching to 'bedrock' → unsets ANTHROPIC_API_KEY, disables OAuth token
-    - Switching to 'api' → unsets AWS vars, disables OAuth token
-    - Switching to 'oauth' → unsets API key and AWS vars
+Integration:
+    Uses baton service ($BATON_URL) when available for centralized
+    credential management. Falls back to local logic if baton unavailable.
 EOF
 }
 
@@ -106,7 +141,7 @@ set_default_access() {
     local provider="$1"
     local method="$2"
     ensure_state_file
-    
+
     local tmp_file
     tmp_file=$(mktemp)
     jq --arg p "$provider" --arg m "$method" \
@@ -115,30 +150,8 @@ set_default_access() {
 }
 
 # ============================================
-# ENVIRONMENT SETUP (Clean Isolation)
+# ENVIRONMENT SETUP
 # ============================================
-
-# Clear ALL auth for a provider (clean slate)
-clear_provider_auth() {
-    local provider="$1"
-    
-    case "$provider" in
-        anthropic)
-            unset ANTHROPIC_API_KEY 2>/dev/null || true
-            unset AWS_PROFILE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN 2>/dev/null || true
-            unset ANTHROPIC_MODEL 2>/dev/null || true
-            ;;
-        google)
-            unset GEMINI_API_KEY GOOGLE_API_KEY 2>/dev/null || true
-            unset GOOGLE_APPLICATION_CREDENTIALS 2>/dev/null || true
-            unset CLOUDSDK_CORE_PROJECT 2>/dev/null || true
-            ;;
-        openai)
-            unset OPENAI_API_KEY 2>/dev/null || true
-            unset AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT 2>/dev/null || true
-            ;;
-    esac
-}
 
 # Output commands to disable OAuth token (for eval)
 output_disable_oauth() {
@@ -146,7 +159,6 @@ output_disable_oauth() {
 
     case "$provider" in
         anthropic)
-            # Claude Code auth locations - output commands to move files
             for f in ~/.claude/auth.json ~/.config/claude/auth.json ~/.claude.json; do
                 cat <<EOF
 if [[ -f "$f" ]] && [[ ! -f "$f.disabled" ]]; then
@@ -156,12 +168,7 @@ fi
 EOF
             done
             ;;
-        google)
-            # Gemini CLI typically uses gcloud ADC, not a separate token file
-            echo "# Google OAuth managed via gcloud"
-            ;;
         openai)
-            # Codex auth locations
             for f in ~/.codex/auth.json ~/.config/codex/auth.json; do
                 cat <<EOF
 if [[ -f "$f" ]] && [[ ! -f "$f.disabled" ]]; then
@@ -202,45 +209,51 @@ EOF
     esac
 }
 
-# Get credential from Bitwarden or env
-get_credential() {
-    local provider="$1"
-    local type="$2"
-    
-    # Try Bitwarden first
-    if command -v bw &>/dev/null && [[ "$(bw status 2>/dev/null | jq -r '.status')" == "unlocked" ]]; then
-        local bw_name="${provider}-${type}-key"
-        local secret
-        secret=$(bw get password "$bw_name" 2>/dev/null) && {
-            echo "$secret"
-            return 0
-        }
-    fi
-    
-    # Fallback to environment variable naming convention
-    local env_var
-    case "$provider:$type" in
-        anthropic:api) env_var="ANTHROPIC_API_KEY_STORED" ;;
-        google:api)    env_var="GEMINI_API_KEY_STORED" ;;
-        openai:api)    env_var="OPENAI_API_KEY_STORED" ;;
-        *)             env_var="" ;;
-    esac
-    
-    [[ -n "$env_var" ]] && [[ -n "${!env_var:-}" ]] && {
-        echo "${!env_var}"
-        return 0
-    }
-    
-    return 1
-}
-
 # Output env setup for a specific access method (for eval)
 output_env_setup() {
     local provider="$1"
     local method="${2:-$(get_default_access "$provider")}"
-    
+
     echo "# ai-access env setup: $provider via $method"
-    
+
+    # Try baton first if available
+    if baton_available; then
+        local response
+        response=$(baton_auth_setup "$provider" "$method")
+
+        local success
+        success=$(echo "$response" | jq -r '.success // false')
+
+        if [[ "$success" == "true" ]]; then
+            echo "# Using baton for credential management"
+            echo "$response" | jq -r '.export_cmd // empty'
+
+            # Handle OAuth file management locally (baton can't do this)
+            if [[ "$method" == "oauth" ]]; then
+                output_enable_oauth "$provider"
+            else
+                output_disable_oauth "$provider"
+            fi
+
+            echo "export AI_ACCESS_${provider^^}='$method'"
+            return 0
+        else
+            local errors
+            errors=$(echo "$response" | jq -r '.errors[]? // empty')
+            echo "# Baton returned errors: $errors"
+            echo "# Falling back to local credential lookup"
+        fi
+    fi
+
+    # Fallback: local credential management
+    output_env_setup_local "$provider" "$method"
+}
+
+# Local fallback for env setup (when baton unavailable)
+output_env_setup_local() {
+    local provider="$1"
+    local method="$2"
+
     # First, clear conflicting auth
     case "$provider" in
         anthropic)
@@ -254,7 +267,7 @@ output_env_setup() {
             echo "unset OPENAI_API_KEY AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT 2>/dev/null || true"
             ;;
     esac
-    
+
     # Then set up the desired method
     case "$provider:$method" in
         anthropic:oauth)
@@ -264,15 +277,14 @@ output_env_setup() {
         anthropic:api)
             output_disable_oauth anthropic
             local key
-            if key=$(get_credential anthropic api 2>/dev/null); then
+            if key=$(get_credential_local anthropic api 2>/dev/null); then
                 echo "export ANTHROPIC_API_KEY='$key'"
             else
-                echo "# WARNING: No API key found. Set ANTHROPIC_API_KEY_STORED or add to Bitwarden as 'anthropic-api-key'"
+                echo "# WARNING: No API key found. Add to Bitwarden as 'Anthropic API'"
             fi
             ;;
         anthropic:bedrock)
             output_disable_oauth anthropic
-            # Get AWS profile from config or default
             local profile="${AWS_PROFILE_ANTHROPIC:-default}"
             local region="${AWS_REGION_ANTHROPIC:-us-east-1}"
             echo "export AWS_PROFILE='$profile'"
@@ -284,10 +296,10 @@ output_env_setup() {
             ;;
         google:api)
             local key
-            if key=$(get_credential google api 2>/dev/null); then
+            if key=$(get_credential_local google api 2>/dev/null); then
                 echo "export GEMINI_API_KEY='$key'"
             else
-                echo "# WARNING: No API key found. Set GEMINI_API_KEY_STORED or add to Bitwarden as 'google-api-key'"
+                echo "# WARNING: No API key found. Add to Bitwarden as 'Google AI API'"
             fi
             ;;
         google:vertex)
@@ -303,10 +315,10 @@ output_env_setup() {
         openai:api)
             output_disable_oauth openai
             local key
-            if key=$(get_credential openai api 2>/dev/null); then
+            if key=$(get_credential_local openai api 2>/dev/null); then
                 echo "export OPENAI_API_KEY='$key'"
             else
-                echo "# WARNING: No API key found. Set OPENAI_API_KEY_STORED or add to Bitwarden as 'openai-api-key'"
+                echo "# WARNING: No API key found. Add to Bitwarden as 'OpenAI API'"
             fi
             ;;
         openai:azure)
@@ -317,8 +329,33 @@ output_env_setup() {
             echo "# Unknown: $provider:$method"
             ;;
     esac
-    
+
     echo "export AI_ACCESS_${provider^^}='$method'"
+}
+
+# Get credential from Bitwarden (local fallback)
+get_credential_local() {
+    local provider="$1"
+    local type="$2"
+
+    if command -v bw &>/dev/null && [[ "$(bw status 2>/dev/null | jq -r '.status')" == "unlocked" ]]; then
+        local bw_names=()
+        case "$provider" in
+            anthropic) bw_names=("Anthropic API" "anthropic-api" "Claude API") ;;
+            google)    bw_names=("Google AI API" "google-ai-api" "Gemini API") ;;
+            openai)    bw_names=("OpenAI API" "openai-api" "ChatGPT API") ;;
+        esac
+
+        for name in "${bw_names[@]}"; do
+            local secret
+            secret=$(bw get password "$name" 2>/dev/null) && {
+                echo "$secret"
+                return 0
+            }
+        done
+    fi
+
+    return 1
 }
 
 # ============================================
@@ -328,12 +365,28 @@ output_env_setup() {
 check_access() {
     local provider="$1"
     local method="${2:-$(get_default_access "$provider")}"
-    
+
     log_info "Checking $provider via $method..."
-    
+
+    # Try baton first
+    if baton_available; then
+        if baton_creds_ready "$provider"; then
+            log_ok "$provider: credentials ready (via baton)"
+            return 0
+        fi
+    fi
+
+    # Fallback to local validation
+    check_access_local "$provider" "$method"
+}
+
+check_access_local() {
+    local provider="$1"
+    local method="$2"
+
     # Set up environment
     eval "$(output_env_setup "$provider" "$method" 2>/dev/null)"
-    
+
     case "$provider:$method" in
         anthropic:oauth)
             if command -v claude &>/dev/null && claude --version &>/dev/null; then
@@ -379,7 +432,7 @@ check_access() {
             ;;
         google:oauth)
             if command -v gemini &>/dev/null; then
-                log_ok "Gemini CLI: installed (run 'gemini' to login if needed)"
+                log_ok "Gemini CLI: installed"
                 return 0
             else
                 log_error "Gemini CLI: not installed"
@@ -408,20 +461,14 @@ check_access() {
                 log_ok "GCP Vertex: authenticated"
                 return 0
             else
-                log_error "GCP Vertex: not authenticated (run 'gcloud auth application-default login')"
+                log_error "GCP Vertex: not authenticated"
                 return 1
             fi
             ;;
         openai:oauth)
             if command -v codex &>/dev/null; then
-                # Check if logged in via codex login status
-                if codex login status 2>/dev/null | grep -q "Logged in"; then
-                    log_ok "Codex OAuth: authenticated"
-                    return 0
-                else
-                    log_warn "Codex OAuth: not logged in (run 'codex login --device-auth')"
-                    return 1
-                fi
+                log_ok "Codex CLI: installed"
+                return 0
             else
                 log_error "Codex CLI: not installed"
                 return 1
@@ -450,7 +497,7 @@ check_access() {
                 log_ok "Azure OpenAI: configured"
                 return 0
             else
-                log_error "Azure OpenAI: missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY"
+                log_error "Azure OpenAI: missing config"
                 return 1
             fi
             ;;
@@ -470,46 +517,88 @@ cmd_status() {
     echo -e "${BOLD}              AI Access Configuration                    ${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    
+
+    # Check baton status
+    if baton_available; then
+        echo -e "${GREEN}●${NC} Baton service: ${GREEN}connected${NC} ($BATON_URL)"
+
+        # Get keepalive health from baton
+        local keepalive_status
+        keepalive_status=$(baton_keepalive_status)
+        local healthy
+        healthy=$(echo "$keepalive_status" | jq -r '.healthy // true')
+        if [[ "$healthy" == "true" ]]; then
+            echo -e "  Credentials: ${GREEN}healthy${NC}"
+        else
+            local unhealthy
+            unhealthy=$(echo "$keepalive_status" | jq -r '.unhealthy[]? // empty' | tr '\n' ', ')
+            echo -e "  Credentials: ${YELLOW}needs attention${NC} ($unhealthy)"
+        fi
+    else
+        echo -e "${YELLOW}○${NC} Baton service: ${DIM}not available${NC} (using local auth)"
+    fi
+    echo ""
+
     for provider in anthropic google openai; do
         local default_method=$(get_default_access "$provider")
         local provider_upper="${provider^}"
-        
+
         echo -e "${BOLD}$provider_upper${NC} (default: ${CYAN}$default_method${NC})"
-        
-        case "$provider" in
-            anthropic)
-                for method in oauth api bedrock; do
-                    check_method_status "$provider" "$method" "$default_method"
-                done
-                ;;
-            google)
-                for method in oauth api vertex; do
-                    check_method_status "$provider" "$method" "$default_method"
-                done
-                ;;
-            openai)
-                for method in oauth api azure; do
-                    check_method_status "$provider" "$method" "$default_method"
-                done
-                ;;
-        esac
+
+        # Try to get status from baton
+        if baton_available; then
+            local baton_status
+            baton_status=$(baton_auth_status "$provider")
+            local recommended
+            recommended=$(echo "$baton_status" | jq -r '.recommended // "none"')
+
+            if [[ "$recommended" != "none" ]]; then
+                echo -e "  ${DIM}recommended: $recommended${NC}"
+            fi
+
+            # Show method status from baton
+            for method in $(get_methods_for_provider "$provider"); do
+                local available
+                available=$(echo "$baton_status" | jq -r ".methods.$method.available // false")
+                local marker=""
+                [[ "$method" == "$default_method" ]] && marker=" ${CYAN}◀ default${NC}"
+
+                if [[ "$available" == "true" ]]; then
+                    printf "  %-10s %s%b\n" "$method:" "✅" "$marker"
+                else
+                    printf "  %-10s %s%b\n" "$method:" "⚪" "$marker"
+                fi
+            done
+        else
+            # Fallback to local status check
+            for method in $(get_methods_for_provider "$provider"); do
+                check_method_status_local "$provider" "$method" "$default_method"
+            done
+        fi
         echo ""
     done
-    
+
     echo -e "${DIM}Switch with: ai-access <provider> <method>${NC}"
     echo -e "${DIM}Example: ai-access anthropic bedrock${NC}"
 }
 
-check_method_status() {
+get_methods_for_provider() {
+    local provider="$1"
+    case "$provider" in
+        anthropic) echo "oauth api bedrock" ;;
+        google)    echo "oauth api vertex" ;;
+        openai)    echo "oauth api azure" ;;
+    esac
+}
+
+check_method_status_local() {
     local provider="$1"
     local method="$2"
     local default="$3"
-    
+
     local marker=""
     [[ "$method" == "$default" ]] && marker=" ${CYAN}◀ default${NC}"
-    
-    # Quick status check without full validation
+
     local status="⚪"
     case "$provider:$method" in
         anthropic:oauth)
@@ -519,17 +608,16 @@ check_method_status() {
             [[ -f ~/.claude/auth.json.disabled ]] && status="⏸️ "
             ;;
         anthropic:api)
-            [[ -n "${ANTHROPIC_API_KEY_STORED:-}" ]] && status="✅"
-            command -v bw &>/dev/null && bw get password anthropic-api-key &>/dev/null && status="✅"
+            command -v bw &>/dev/null && bw get password "Anthropic API" &>/dev/null 2>&1 && status="✅"
             ;;
         anthropic:bedrock)
-            aws sts get-caller-identity &>/dev/null && status="✅"
+            aws sts get-caller-identity &>/dev/null 2>&1 && status="✅"
             ;;
         google:oauth)
             command -v gemini &>/dev/null && status="✅"
             ;;
         google:api)
-            [[ -n "${GEMINI_API_KEY_STORED:-}" ]] && status="✅"
+            command -v bw &>/dev/null && bw get password "Google AI API" &>/dev/null 2>&1 && status="✅"
             ;;
         google:vertex)
             gcloud auth application-default print-access-token &>/dev/null 2>&1 && status="✅"
@@ -538,16 +626,15 @@ check_method_status() {
             for f in ~/.codex/auth.json ~/.config/codex/auth.json; do
                 [[ -f "$f" ]] && { status="✅"; break; }
             done
-            [[ -f ~/.codex/auth.json.disabled ]] && status="⏸️ "
             ;;
         openai:api)
-            [[ -n "${OPENAI_API_KEY_STORED:-}" ]] && status="✅"
+            command -v bw &>/dev/null && bw get password "OpenAI API" &>/dev/null 2>&1 && status="✅"
             ;;
         openai:azure)
             [[ -n "${AZURE_OPENAI_ENDPOINT:-}" ]] && status="✅"
             ;;
     esac
-    
+
     printf "  %-10s %s%b\n" "$method:" "$status" "$marker"
 }
 
@@ -557,7 +644,7 @@ check_method_status() {
 
 main() {
     local cmd="${1:-}"
-    
+
     case "$cmd" in
         status|"")
             cmd_status
@@ -585,6 +672,13 @@ main() {
                     google)    echo "  oauth, api, vertex" ;;
                     openai)    echo "  oauth, api, azure" ;;
                 esac
+
+                # Show recommended from baton if available
+                if baton_available; then
+                    local recommended
+                    recommended=$(baton_auth_status "$provider" | jq -r '.recommended // "none"')
+                    [[ "$recommended" != "none" ]] && echo -e "\n${GREEN}Recommended:${NC} $recommended"
+                fi
             else
                 set_default_access "$provider" "$method"
                 log_ok "Set $provider default to: $method"
