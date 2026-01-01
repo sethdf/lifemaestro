@@ -1,93 +1,316 @@
 #!/usr/bin/env bash
-# creds - Credential management
+# creds - Credential management via baton
 # 12-Factor CLI compliant
 
 set -euo pipefail
 
 MAESTRO_ROOT="${MAESTRO_ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/lifemaestro}"
+MAESTRO_STATE="${MAESTRO_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lifemaestro}"
+BATON_URL="${BATON_URL:-http://localhost:4000}"
 
-source "$MAESTRO_ROOT/core/init.sh"
-maestro::init 2>/dev/null || true
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+DIM='\033[2m'
+BOLD='\033[1m'
+NC='\033[0m'
 
-# Parse common flags
-cli::parse_common_flags "$@"
-set -- "${MAESTRO_ARGS[@]}"
+log_info()  { echo -e "${BLUE}▶${NC} $*"; }
+log_ok()    { echo -e "${GREEN}✓${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}!${NC} $*" >&2; }
+log_error() { echo -e "${RED}✗${NC} $*" >&2; }
+
+# ============================================
+# BATON INTEGRATION
+# ============================================
+
+baton_available() {
+    curl -s --connect-timeout 1 "$BATON_URL/healthz" &>/dev/null
+}
+
+baton_keepalive_status() {
+    curl -s "$BATON_URL/keepalive/status" 2>/dev/null
+}
+
+baton_keepalive_health() {
+    curl -s "$BATON_URL/keepalive/health" 2>/dev/null
+}
+
+baton_keepalive_check() {
+    curl -s -X POST "$BATON_URL/keepalive/check" 2>/dev/null
+}
+
+baton_keepalive_refresh() {
+    local provider="${1:-}"
+    if [[ -n "$provider" ]]; then
+        curl -s -X POST "$BATON_URL/keepalive/refresh?provider=$provider" 2>/dev/null
+    else
+        curl -s -X POST "$BATON_URL/keepalive/refresh" 2>/dev/null
+    fi
+}
+
+# ============================================
+# LOCAL FALLBACK
+# ============================================
+
+source_local_init() {
+    if [[ -f "$MAESTRO_ROOT/core/init.sh" ]]; then
+        source "$MAESTRO_ROOT/core/init.sh"
+        maestro::init 2>/dev/null || true
+        return 0
+    fi
+    return 1
+}
+
+# ============================================
+# STATUS DISPLAY
+# ============================================
+
+format_status() {
+    local json="$1"
+
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}              Credential Status                          ${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    local enabled
+    enabled=$(echo "$json" | jq -r '.enabled // false')
+
+    if [[ "$enabled" != "true" ]]; then
+        echo -e "${DIM}Keepalive daemon not enabled${NC}"
+        return
+    fi
+
+    # Parse credentials
+    local creds
+    creds=$(echo "$json" | jq -r '.credentials // {}')
+
+    if [[ "$creds" == "{}" ]]; then
+        echo -e "${DIM}No credentials monitored${NC}"
+        return
+    fi
+
+    echo "$creds" | jq -r 'to_entries[] | "\(.key)|\(.value.status // "unknown")|\(.value.ttl_seconds // 0)"' | while IFS='|' read -r key status ttl; do
+        local icon color ttl_str
+
+        case "$status" in
+            valid)    icon="✅"; color="$GREEN" ;;
+            expiring) icon="⚠️ "; color="$YELLOW" ;;
+            expired)  icon="❌"; color="$RED" ;;
+            *)        icon="❓"; color="$DIM" ;;
+        esac
+
+        if [[ "$ttl" -gt 0 ]]; then
+            if [[ "$ttl" -gt 3600 ]]; then
+                ttl_str="$((ttl / 3600))h"
+            elif [[ "$ttl" -gt 60 ]]; then
+                ttl_str="$((ttl / 60))m"
+            else
+                ttl_str="${ttl}s"
+            fi
+            printf "  %-30s %s ${color}%-10s${NC} ${DIM}TTL: %s${NC}\n" "$key" "$icon" "$status" "$ttl_str"
+        else
+            printf "  %-30s %s ${color}%-10s${NC}\n" "$key" "$icon" "$status"
+        fi
+    done
+
+    echo ""
+
+    # Show health summary
+    local health
+    health=$(echo "$json" | jq -r '.healthy_count // 0')
+    local unhealthy
+    unhealthy=$(echo "$json" | jq -r '.unhealthy // []')
+
+    if [[ "$unhealthy" != "[]" ]] && [[ -n "$unhealthy" ]]; then
+        echo -e "${YELLOW}Unhealthy: $unhealthy${NC}"
+    else
+        echo -e "${GREEN}All credentials healthy${NC}"
+    fi
+}
+
+cmd_status() {
+    if baton_available; then
+        echo -e "${DIM}(via baton @ $BATON_URL)${NC}"
+        echo ""
+        local status
+        status=$(baton_keepalive_status)
+        format_status "$status"
+    else
+        log_warn "Baton not available, using local keepalive"
+        if source_local_init; then
+            keepalive::status 2>/dev/null || log_error "Local keepalive not available"
+        else
+            log_error "No credential management available"
+            exit 1
+        fi
+    fi
+}
+
+cmd_check() {
+    if baton_available; then
+        local result
+        result=$(baton_keepalive_check)
+        local checked
+        checked=$(echo "$result" | jq -r '.checked // false')
+        if [[ "$checked" == "true" ]]; then
+            log_ok "Credentials checked"
+            echo "$result" | jq -r '.credentials // {}' | jq '.'
+            return 0
+        else
+            log_error "Check failed"
+            return 1
+        fi
+    else
+        if source_local_init; then
+            if keepalive::check_all 2>/dev/null; then
+                return 0
+            else
+                return 1
+            fi
+        else
+            log_error "No credential management available"
+            return 1
+        fi
+    fi
+}
+
+cmd_refresh() {
+    local provider="${1:-}"
+
+    if baton_available; then
+        log_info "Forcing credential refresh via baton..."
+        local result
+        result=$(baton_keepalive_refresh "$provider")
+        local success
+        success=$(echo "$result" | jq -r '.success // false')
+        if [[ "$success" == "true" ]]; then
+            log_ok "Credentials refreshed"
+            echo "$result" | jq -r '.refreshed // {}'
+        else
+            log_warn "Some credentials failed to refresh"
+            echo "$result" | jq '.'
+        fi
+    else
+        if source_local_init; then
+            log_info "Forcing credential refresh locally..."
+            AWS_REFRESH_THRESHOLD=999999 OAUTH_REFRESH_THRESHOLD=999999 keepalive::check_all 2>/dev/null
+        else
+            log_error "No credential management available"
+            exit 1
+        fi
+    fi
+}
+
+cmd_health() {
+    if baton_available; then
+        local health
+        health=$(baton_keepalive_health)
+        local healthy
+        healthy=$(echo "$health" | jq -r '.healthy // false')
+
+        if [[ "$healthy" == "true" ]]; then
+            echo -e "${GREEN}✓${NC} All credentials healthy"
+            return 0
+        else
+            local unhealthy
+            unhealthy=$(echo "$health" | jq -r '.unhealthy // []')
+            echo -e "${RED}✗${NC} Unhealthy credentials: $unhealthy"
+            return 1
+        fi
+    else
+        log_warn "Baton not available"
+        return 1
+    fi
+}
+
+cmd_watch() {
+    while true; do
+        clear
+        cmd_status
+        echo ""
+        echo -e "${DIM}Refreshing every 30s... (Ctrl+C to exit)${NC}"
+        sleep 30
+    done
+}
+
+cmd_logs() {
+    if [[ -f "$MAESTRO_STATE/keepalive.log" ]]; then
+        tail -f "$MAESTRO_STATE/keepalive.log"
+    else
+        log_error "No keepalive log found at $MAESTRO_STATE/keepalive.log"
+        exit 1
+    fi
+}
+
+usage() {
+    cat <<EOF
+creds - Credential Management via Baton
+
+Usage: creds [command]
+
+Commands:
+    status      Show credential status (default)
+    check       Run one check cycle (exit 0=ok, 1=error)
+    refresh     Force refresh all credentials
+    health      Quick health check (for scripts)
+    watch       Live status display
+    logs        View keepalive logs
+
+Options:
+    -v, --version   Show version
+    -h, --help      Show this help
+
+Environment:
+    BATON_URL       Baton server URL (default: http://localhost:4000)
+
+Exit codes:
+    0   Success / all credentials valid
+    1   One or more credentials invalid
+    2   Configuration error
+EOF
+}
+
+# ============================================
+# MAIN
+# ============================================
 
 cmd="${1:-status}"
 shift || true
 
 case "$cmd" in
     status|s)
-        keepalive::status
+        cmd_status
         ;;
     check|c)
-        if keepalive::check_all; then
-            exit $EXIT_SUCCESS
-        else
-            exit $EXIT_ERROR
-        fi
-        ;;
-    start)
-        keepalive::start
-        ;;
-    stop)
-        keepalive::stop
-        ;;
-    restart)
-        keepalive::stop
-        sleep 1
-        keepalive::start
+        cmd_check
         ;;
     refresh|r)
-        cli::info "Forcing credential refresh..."
-        AWS_REFRESH_THRESHOLD=999999 OAUTH_REFRESH_THRESHOLD=999999 keepalive::check_all
+        cmd_refresh "$@"
         ;;
-    log|logs)
-        if [[ ! -f "$MAESTRO_STATE/keepalive.log" ]]; then
-            cli::die $EXIT_NOINPUT "No keepalive log found"
-        fi
-        tail -f "$MAESTRO_STATE/keepalive.log"
+    health|h)
+        cmd_health
         ;;
-    watch)
-        while true; do
-            clear
-            keepalive::status
-            cli::log ""
-            cli::log "Refreshing every 30s... (Ctrl+C to exit)"
-            sleep 30
-        done
+    watch|w)
+        cmd_watch
+        ;;
+    logs|log|l)
+        cmd_logs
         ;;
     version|-v|--version)
-        cli::out "creds (lifemaestro) $MAESTRO_VERSION"
-        exit $EXIT_SUCCESS
+        echo "creds (lifemaestro) ${MAESTRO_VERSION:-0.3.0}"
         ;;
     help|--help|-h)
-        cli::out "creds - Credential Management"
-        cli::out ""
-        cli::out "Usage: creds [options] <command>"
-        cli::out ""
-        cli::out "Options:"
-        cli::out "    -q, --quiet     Suppress non-essential output"
-        cli::out "    -v, --version   Show version"
-        cli::out "    -h, --help      Show this help"
-        cli::out ""
-        cli::out "Commands:"
-        cli::out "    status      Show credential status (default)"
-        cli::out "    check       Run one check cycle (exit 0=ok, 1=error)"
-        cli::out "    start       Start keepalive daemon"
-        cli::out "    stop        Stop keepalive daemon"
-        cli::out "    restart     Restart daemon"
-        cli::out "    refresh     Force refresh all credentials"
-        cli::out "    logs        View keepalive logs"
-        cli::out "    watch       Live status display"
-        cli::out ""
-        cli::out "Exit codes:"
-        cli::out "    0   Success / all credentials valid"
-        cli::out "    1   One or more credentials invalid"
-        cli::out "    2   Configuration error"
-        exit $EXIT_SUCCESS
+        usage
         ;;
     *)
-        cli::die_usage "Unknown command: $cmd"
+        log_error "Unknown command: $cmd"
+        echo ""
+        usage
+        exit 1
         ;;
 esac
