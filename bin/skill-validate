@@ -78,8 +78,8 @@ validate_skill() {
         ((errors++))
     fi
 
-    # Check for scripts/ if mentioned
-    if grep -q 'scripts/' "$skill_file" && [[ ! -d "$skill_dir/scripts" ]]; then
+    # Check for scripts/ if mentioned (exclude transcripts/ false positives)
+    if grep -qE '(^|[^a-z])scripts/' "$skill_file" && [[ ! -d "$skill_dir/scripts" ]]; then
         err "Scripts mentioned but scripts/ directory missing"
         ((errors++))
     fi
